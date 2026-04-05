@@ -13,6 +13,7 @@ describe('SoftDeleteService', () => {
     softDeleteModels: ['User', 'Post'],
     deletedAtField: 'deletedAt',
     deletedByField: 'deletedBy',
+    prismaServiceToken: 'PRISMA',
   };
 
   beforeEach(() => {
@@ -190,6 +191,7 @@ describe('SoftDeleteService', () => {
     it('should use default deletedAtField when not specified', async () => {
       const optionsNoField: SoftDeleteModuleOptions = {
         softDeleteModels: ['User'],
+        prismaServiceToken: 'PRISMA',
       };
       const svc = new SoftDeleteService(optionsNoField, mockPrisma, null);
 

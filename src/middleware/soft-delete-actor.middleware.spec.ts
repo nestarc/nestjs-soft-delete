@@ -19,6 +19,7 @@ describe('SoftDeleteActorMiddleware', () => {
       softDeleteModels: ['User'],
       deletedByField: 'deletedBy',
       actorExtractor: (req: any) => req.user?.id ?? null,
+      prismaServiceToken: 'PRISMA',
     };
 
     mockReq.user = { id: 'user-42' };
@@ -43,6 +44,7 @@ describe('SoftDeleteActorMiddleware', () => {
       softDeleteModels: ['User'],
       deletedByField: 'deletedBy',
       actorExtractor: (req: any) => req.user?.id ?? null,
+      prismaServiceToken: 'PRISMA',
     };
 
     // No user on request
@@ -61,6 +63,7 @@ describe('SoftDeleteActorMiddleware', () => {
   it('should pass through when deletedByField is not configured', () => {
     const options: SoftDeleteModuleOptions = {
       softDeleteModels: ['User'],
+      prismaServiceToken: 'PRISMA',
       // no deletedByField
     };
 
@@ -74,6 +77,7 @@ describe('SoftDeleteActorMiddleware', () => {
     const options: SoftDeleteModuleOptions = {
       softDeleteModels: ['User'],
       deletedByField: 'deletedBy',
+      prismaServiceToken: 'PRISMA',
       // no actorExtractor
     };
 
@@ -86,6 +90,7 @@ describe('SoftDeleteActorMiddleware', () => {
   it('should not set actor context when passing through without config', () => {
     const options: SoftDeleteModuleOptions = {
       softDeleteModels: ['User'],
+      prismaServiceToken: 'PRISMA',
       // no deletedByField, no actorExtractor
     };
 

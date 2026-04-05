@@ -1,6 +1,6 @@
 import { DynamicModule, MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { SOFT_DELETE_MODULE_OPTIONS } from './soft-delete.constants';
+import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from './soft-delete.constants';
 import { SoftDeleteModuleOptions, SoftDeleteModuleAsyncOptions } from './interfaces/soft-delete-options.interface';
 import { SoftDeleteService } from './services/soft-delete.service';
 import { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.interceptor';
@@ -16,6 +16,10 @@ export class SoftDeleteModule implements NestModule {
         {
           provide: SOFT_DELETE_MODULE_OPTIONS,
           useValue: options,
+        },
+        {
+          provide: SOFT_DELETE_PRISMA_SERVICE,
+          useExisting: options.prismaServiceToken,
         },
         SoftDeleteService,
         {
@@ -37,6 +41,10 @@ export class SoftDeleteModule implements NestModule {
           provide: SOFT_DELETE_MODULE_OPTIONS,
           useFactory: options.useFactory,
           inject: options.inject ?? [],
+        },
+        {
+          provide: SOFT_DELETE_PRISMA_SERVICE,
+          useExisting: options.prismaServiceToken,
         },
         SoftDeleteService,
         {

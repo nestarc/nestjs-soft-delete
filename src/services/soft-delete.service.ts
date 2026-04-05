@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { SOFT_DELETE_MODULE_OPTIONS } from '../soft-delete.constants';
+import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from '../soft-delete.constants';
 import { SoftDeleteModuleOptions } from '../interfaces/soft-delete-options.interface';
 import { CascadeHandler } from '../prisma/cascade-handler';
 import { SoftDeleteContext } from './soft-delete-context';
@@ -11,7 +11,7 @@ export class SoftDeleteService {
 
   constructor(
     @Inject(SOFT_DELETE_MODULE_OPTIONS) private readonly options: SoftDeleteModuleOptions,
-    @Inject('PRISMA_SERVICE') private readonly prisma: any,
+    @Inject(SOFT_DELETE_PRISMA_SERVICE) private readonly prisma: any,
     @Optional() @Inject(CascadeHandler) private readonly cascadeHandler: CascadeHandler | null,
   ) {
     this.deletedAtField = options.deletedAtField ?? 'deletedAt';

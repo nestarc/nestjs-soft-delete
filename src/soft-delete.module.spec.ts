@@ -1,15 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { SoftDeleteModule } from './soft-delete.module';
-import { SOFT_DELETE_MODULE_OPTIONS } from './soft-delete.constants';
+import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from './soft-delete.constants';
 import { SoftDeleteService } from './services/soft-delete.service';
 import { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.interceptor';
 import type { SoftDeleteModuleOptions } from './interfaces/soft-delete-options.interface';
 
 describe('SoftDeleteModule', () => {
+  const MOCK_PRISMA_TOKEN = 'PrismaService';
+
   const options: SoftDeleteModuleOptions = {
     softDeleteModels: ['User', 'Post'],
     deletedAtField: 'deletedAt',
+    prismaServiceToken: MOCK_PRISMA_TOKEN,
   };
 
   describe('forRoot()', () => {
@@ -34,6 +37,17 @@ describe('SoftDeleteModule', () => {
 
       expect(optionsProvider).toBeDefined();
       expect(optionsProvider.useValue).toEqual(options);
+    });
+
+    it('should provide SOFT_DELETE_PRISMA_SERVICE with useExisting pointing to prismaServiceToken', () => {
+      const dynamicModule = SoftDeleteModule.forRoot(options);
+
+      const prismaProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === SOFT_DELETE_PRISMA_SERVICE,
+      ) as any;
+
+      expect(prismaProvider).toBeDefined();
+      expect(prismaProvider.useExisting).toBe(MOCK_PRISMA_TOKEN);
     });
 
     it('should provide SoftDeleteService', () => {
@@ -70,6 +84,7 @@ describe('SoftDeleteModule', () => {
     it('should return DynamicModule with correct module property', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       expect(dynamicModule.module).toBe(SoftDeleteModule);
@@ -78,6 +93,7 @@ describe('SoftDeleteModule', () => {
     it('should be global', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       expect(dynamicModule.global).toBe(true);
@@ -88,6 +104,7 @@ describe('SoftDeleteModule', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         useFactory: factory,
         inject: ['CONFIG_SERVICE'],
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       const optionsProvider = dynamicModule.providers?.find(
@@ -99,9 +116,24 @@ describe('SoftDeleteModule', () => {
       expect(optionsProvider.inject).toEqual(['CONFIG_SERVICE']);
     });
 
+    it('should provide SOFT_DELETE_PRISMA_SERVICE with useExisting pointing to prismaServiceToken', () => {
+      const dynamicModule = SoftDeleteModule.forRootAsync({
+        useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
+      });
+
+      const prismaProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === SOFT_DELETE_PRISMA_SERVICE,
+      ) as any;
+
+      expect(prismaProvider).toBeDefined();
+      expect(prismaProvider.useExisting).toBe(MOCK_PRISMA_TOKEN);
+    });
+
     it('should provide SoftDeleteService', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       expect(dynamicModule.providers).toContain(SoftDeleteService);
@@ -110,6 +142,7 @@ describe('SoftDeleteModule', () => {
     it('should export SoftDeleteService and SOFT_DELETE_MODULE_OPTIONS', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       expect(dynamicModule.exports).toContain(SoftDeleteService);
@@ -121,6 +154,7 @@ describe('SoftDeleteModule', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         imports: [mockModule as any],
         useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       expect(dynamicModule.imports).toContain(mockModule);
@@ -129,6 +163,7 @@ describe('SoftDeleteModule', () => {
     it('should default to empty imports and inject when not provided', () => {
       const dynamicModule = SoftDeleteModule.forRootAsync({
         useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
       expect(dynamicModule.imports).toEqual([]);

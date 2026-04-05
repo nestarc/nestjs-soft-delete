@@ -13,7 +13,7 @@ describe('TestSoftDeleteModule', () => {
     expect(result).toEqual({
       module: TestSoftDeleteModule,
       providers: [
-        { provide: SOFT_DELETE_MODULE_OPTIONS, useValue: { deletedAtField: 'deletedAt', softDeleteModels: ['User', 'Post'] } },
+        { provide: SOFT_DELETE_MODULE_OPTIONS, useValue: { deletedAtField: 'deletedAt', prismaServiceToken: 'TEST_PRISMA', softDeleteModels: ['User', 'Post'] } },
         SoftDeleteService,
       ],
       exports: [SoftDeleteService, SOFT_DELETE_MODULE_OPTIONS],
