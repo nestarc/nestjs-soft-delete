@@ -1,6 +1,6 @@
 {
   "name": "@nestarc/soft-delete",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Prisma soft-delete extension for NestJS with automatic query filtering, cascade support, and restore API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -40,10 +40,14 @@
     },
     "@nestarc/audit-log": {
       "optional": true
+    },
+    "@nestjs/event-emitter": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@nestjs/common": "^11.0.0",
+    "@nestjs/event-emitter": "^3.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/testing": "^11.0.0",
