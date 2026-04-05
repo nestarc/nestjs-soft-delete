@@ -3,6 +3,7 @@ import { TestSoftDeleteModule } from './test-soft-delete.module';
 import { expectSoftDeleted, expectNotSoftDeleted } from './expect-soft-deleted';
 import { SoftDeleteService } from '../services/soft-delete.service';
 import { SoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
+import { CascadeHandler } from '../prisma/cascade-handler';
 import { SOFT_DELETE_MODULE_OPTIONS } from '../soft-delete.constants';
 
 describe('TestSoftDeleteModule', () => {
@@ -15,6 +16,7 @@ describe('TestSoftDeleteModule', () => {
       module: TestSoftDeleteModule,
       providers: [
         { provide: SOFT_DELETE_MODULE_OPTIONS, useValue: { deletedAtField: 'deletedAt', prismaServiceToken: 'TEST_PRISMA', softDeleteModels: ['User', 'Post'] } },
+        { provide: CascadeHandler, useValue: null },
         SoftDeleteService,
         SoftDeleteEventEmitter,
       ],

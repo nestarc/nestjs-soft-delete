@@ -62,16 +62,17 @@ export class SoftDeleteService {
     // Cascade restore if handler exists and the record was soft-deleted
     const deletedAt = record[this.deletedAtField];
     if (this.cascadeHandler && deletedAt) {
+      const pkField = this.cascadeHandler.findPrimaryKey(model);
       await this.cascadeHandler.cascadeRestore(
         this.prisma,
         model,
-        record.id,
+        record[pkField],
         deletedAt,
         0,
       );
     }
 
-    this.eventEmitter?.emitRestored(new RestoredEvent(model, where));
+    this.eventEmitter?.emitRestored(new RestoredEvent(model, where, SoftDeleteContext.getActorId()));
 
     return restored as T;
   }

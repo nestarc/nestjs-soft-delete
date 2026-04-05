@@ -66,7 +66,47 @@ model User {
 }
 ```
 
-### 2. Register the module
+### 2. Set up PrismaService
+
+Apply the soft-delete extension in your `PrismaService`. This is what intercepts `delete()` calls and injects query filters:
+
+```typescript
+// prisma.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+import { createPrismaSoftDeleteExtension } from '@nestarc/soft-delete';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit {
+  private _extended: ReturnType<typeof this.$extends>;
+
+  constructor() {
+    super();
+    this._extended = this.$extends(
+      createPrismaSoftDeleteExtension({
+        softDeleteModels: ['User', 'Post'],
+        deletedAtField: 'deletedAt',
+        deletedByField: 'deletedBy',
+        cascade: { User: ['Post'] },
+      }),
+    );
+  }
+
+  // Expose the extended client for all queries
+  get client() {
+    return this._extended;
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+  }
+}
+```
+
+> **Important:** Use `prisma.client.user.delete()` (the extended client) for soft-delete behavior.
+> Direct `prisma.user.delete()` calls bypass the extension and perform hard deletes.
+
+### 3. Register the module
 
 ```typescript
 // app.module.ts
@@ -91,7 +131,7 @@ export class AppModule {}
 
 `SoftDeleteModule` is global — you do not need to import it in feature modules.
 
-### 3. Use in a controller
+### 4. Use in a controller
 
 ```typescript
 // users.controller.ts

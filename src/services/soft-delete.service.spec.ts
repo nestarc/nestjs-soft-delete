@@ -33,6 +33,7 @@ describe('SoftDeleteService', () => {
 
     mockCascadeHandler = {
       cascadeRestore: vi.fn().mockResolvedValue(undefined),
+      findPrimaryKey: vi.fn().mockReturnValue('id'),
     };
 
     mockEventEmitter = {
@@ -109,6 +110,30 @@ describe('SoftDeleteService', () => {
       );
     });
 
+    it('should use dynamic PK field from cascadeHandler instead of hardcoded id', async () => {
+      mockCascadeHandler.findPrimaryKey.mockReturnValue('uuid');
+      const deletedUser = {
+        uuid: 'abc-123',
+        name: 'Alice',
+        deletedAt: deletedDate,
+      };
+      const restoredUser = { uuid: 'abc-123', deletedAt: null };
+
+      mockPrisma.user.findFirst.mockResolvedValue(deletedUser);
+      mockPrisma.user.update.mockResolvedValue(restoredUser);
+
+      await service.restore('User', { uuid: 'abc-123' });
+
+      expect(mockCascadeHandler.findPrimaryKey).toHaveBeenCalledWith('User');
+      expect(mockCascadeHandler.cascadeRestore).toHaveBeenCalledWith(
+        mockPrisma,
+        'User',
+        'abc-123',
+        deletedDate,
+        0,
+      );
+    });
+
     it('should not cascade restore when cascadeHandler is null', async () => {
       const serviceNoCascade = new SoftDeleteService(defaultOptions, mockPrisma, null, mockEventEmitter);
       const deletedUser = {
@@ -143,6 +168,25 @@ describe('SoftDeleteService', () => {
         expect.objectContaining({
           model: 'User',
           where: { id: '1' },
+        }),
+      );
+    });
+
+    it('should pass actorId from context to RestoredEvent', async () => {
+      const deletedUser = { id: '1', deletedAt: deletedDate };
+      const restoredUser = { id: '1', deletedAt: null };
+
+      mockPrisma.user.findFirst.mockResolvedValue(deletedUser);
+      mockPrisma.user.update.mockResolvedValue(restoredUser);
+
+      await SoftDeleteContext.run(
+        { filterMode: 'default', skipSoftDelete: false, actorId: 'admin-123' },
+        () => service.restore('User', { id: '1' }),
+      );
+
+      expect(mockEventEmitter.emitRestored).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: 'admin-123',
         }),
       );
     });

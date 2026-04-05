@@ -4,6 +4,7 @@ import { SoftDeleteModule } from './soft-delete.module';
 import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from './soft-delete.constants';
 import { SoftDeleteService } from './services/soft-delete.service';
 import { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.interceptor';
+import { CascadeHandler } from './prisma/cascade-handler';
 import type { SoftDeleteModuleOptions } from './interfaces/soft-delete-options.interface';
 import { SoftDeleteEventEmitter } from './events/soft-delete-event-emitter';
 
@@ -78,6 +79,18 @@ describe('SoftDeleteModule', () => {
       const dynamicModule = SoftDeleteModule.forRoot(options);
 
       expect(dynamicModule.exports).toContain(SOFT_DELETE_MODULE_OPTIONS);
+    });
+
+    it('should provide CascadeHandler factory provider', () => {
+      const dynamicModule = SoftDeleteModule.forRoot(options);
+
+      const cascadeProvider = (dynamicModule.providers as any[])?.find(
+        (p: any) => p.provide === CascadeHandler,
+      );
+
+      expect(cascadeProvider).toBeDefined();
+      expect(cascadeProvider.useFactory).toBeTypeOf('function');
+      expect(cascadeProvider.inject).toContain(SOFT_DELETE_MODULE_OPTIONS);
     });
 
     it('should provide SoftDeleteEventEmitter when enableEvents is true', () => {
