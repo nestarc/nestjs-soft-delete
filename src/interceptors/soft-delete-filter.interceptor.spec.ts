@@ -126,4 +126,78 @@ describe('SoftDeleteFilterInterceptor', () => {
     const result = await firstValueFrom(interceptor.intercept(context, callHandler));
     expect(result).toEqual({ data: 'test' });
   });
+
+  it('should preserve actorId from middleware context (Fix 1)', async () => {
+    const context = createMockContext(mockHandler);
+    const callHandler: CallHandler = {
+      handle: () =>
+        new Observable((subscriber) => {
+          subscriber.next(SoftDeleteContext.getActorId());
+          subscriber.complete();
+        }),
+    };
+
+    // Simulate middleware setting actorId in outer context
+    const result = await SoftDeleteContext.run(
+      { filterMode: 'default', skipSoftDelete: false, actorId: 'admin-42' },
+      () => firstValueFrom(interceptor.intercept(context, callHandler)),
+    );
+    expect(result).toBe('admin-42');
+  });
+
+  it('should read class-level @WithDeleted metadata (Fix 4)', async () => {
+    const mockClass = class TestController {};
+    Reflect.defineMetadata(WITH_DELETED_KEY, true, mockClass);
+
+    const classContext = {
+      getHandler: () => mockHandler,  // no method-level metadata
+      getClass: () => mockClass,      // class-level metadata
+      getArgs: () => [],
+      getArgByIndex: () => ({}),
+      switchToHttp: () => ({} as any),
+      switchToRpc: () => ({} as any),
+      switchToWs: () => ({} as any),
+      getType: () => 'http',
+    } as unknown as ExecutionContext;
+
+    const callHandler: CallHandler = {
+      handle: () =>
+        new Observable((subscriber) => {
+          subscriber.next(SoftDeleteContext.getFilterMode());
+          subscriber.complete();
+        }),
+    };
+
+    const result = await firstValueFrom(interceptor.intercept(classContext, callHandler));
+    expect(result).toBe('withDeleted');
+  });
+
+  it('should prefer method-level metadata over class-level for same key (Fix 4)', async () => {
+    // Class says withDeleted=false, method says withDeleted=true → method wins
+    const mockClass = class TestController {};
+    Reflect.defineMetadata(WITH_DELETED_KEY, false, mockClass);
+    Reflect.defineMetadata(WITH_DELETED_KEY, true, mockHandler);
+
+    const classContext = {
+      getHandler: () => mockHandler,
+      getClass: () => mockClass,
+      getArgs: () => [],
+      getArgByIndex: () => ({}),
+      switchToHttp: () => ({} as any),
+      switchToRpc: () => ({} as any),
+      switchToWs: () => ({} as any),
+      getType: () => 'http',
+    } as unknown as ExecutionContext;
+
+    const callHandler: CallHandler = {
+      handle: () =>
+        new Observable((subscriber) => {
+          subscriber.next(SoftDeleteContext.getFilterMode());
+          subscriber.complete();
+        }),
+    };
+
+    const result = await firstValueFrom(interceptor.intercept(classContext, callHandler));
+    expect(result).toBe('withDeleted');
+  });
 });

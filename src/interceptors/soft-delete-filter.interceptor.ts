@@ -10,11 +10,11 @@ export class SoftDeleteFilterInterceptor implements NestInterceptor {
   constructor(private readonly reflector: Reflector) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const handler = context.getHandler();
+    const targets = [context.getHandler(), context.getClass()];
 
-    const withDeleted = this.reflector.get<boolean>(WITH_DELETED_KEY, handler) ?? false;
-    const onlyDeleted = this.reflector.get<boolean>(ONLY_DELETED_KEY, handler) ?? false;
-    const skipSoftDelete = this.reflector.get<boolean>(SKIP_SOFT_DELETE_KEY, handler) ?? false;
+    const withDeleted = this.reflector.getAllAndOverride<boolean>(WITH_DELETED_KEY, targets) ?? false;
+    const onlyDeleted = this.reflector.getAllAndOverride<boolean>(ONLY_DELETED_KEY, targets) ?? false;
+    const skipSoftDelete = this.reflector.getAllAndOverride<boolean>(SKIP_SOFT_DELETE_KEY, targets) ?? false;
 
     let filterMode: SoftDeleteFilterMode = 'default';
     if (withDeleted) {
@@ -23,9 +23,13 @@ export class SoftDeleteFilterInterceptor implements NestInterceptor {
       filterMode = 'onlyDeleted';
     }
 
+    // Preserve actorId from middleware context (AsyncLocalStorage.run replaces the entire store)
+    const currentActorId = SoftDeleteContext.getActorId();
+
     const store: SoftDeleteStore = {
       filterMode,
       skipSoftDelete,
+      actorId: currentActorId,
     };
 
     return new Observable((subscriber) => {

@@ -41,7 +41,12 @@
       "Bash(npm test:*)",
       "Bash(cmd.exe /c \"npx vitest run 2>&1\")",
       "Bash(cmd.exe /c \"npx vitest run\")",
-      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\ksy\\\\Documents\\\\GitHub\\\\nestjs-soft-delete && npx vitest run 2>&1\")"
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\ksy\\\\Documents\\\\GitHub\\\\nestjs-soft-delete && npx vitest run 2>&1\")",
+      "Bash(docker compose:*)",
+      "Bash(npx prisma:*)",
+      "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts)",
+      "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts -t \"DIAGNOSTIC\")",
+      "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts -t \"non-async\")"
     ]
   }
 }

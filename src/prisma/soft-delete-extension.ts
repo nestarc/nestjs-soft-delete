@@ -247,7 +247,7 @@ export function _buildSoftDeleteQueryHandlers(
  */
 export function createPrismaSoftDeleteExtension(options: SoftDeleteExtensionOptions) {
   return Prisma.defineExtension((client) => {
-    const handlers = _buildSoftDeleteQueryHandlers(options, Prisma.dmmf);
+    const handlers = _buildSoftDeleteQueryHandlers(options, (Prisma as any).dmmf);
 
     return client.$extends({
       query: {
