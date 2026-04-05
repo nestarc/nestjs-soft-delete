@@ -24,4 +24,6 @@ export interface SoftDeleteExtensionOptions {
   deletedByField?: string | null;
   cascade?: Record<string, string[]>;
   maxCascadeDepth?: number;
+  /** Optional event emitter for soft-delete lifecycle events */
+  eventEmitter?: { emitSoftDeleted: (event: any) => void } | null;
 }

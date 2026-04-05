@@ -3,6 +3,7 @@ import { CascadeHandler } from './cascade-handler';
 import { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import { DEFAULT_DELETED_AT_FIELD } from '../soft-delete.constants';
+import { SoftDeletedEvent } from '../events/soft-delete.events';
 
 /**
  * Determines whether a given model name is in the list of soft-delete models.
@@ -130,6 +131,7 @@ export function _buildSoftDeleteQueryHandlers(
   const deletedAtField = options.deletedAtField ?? DEFAULT_DELETED_AT_FIELD;
   const deletedByField = options.deletedByField ?? null;
   const softDeleteModels = options.softDeleteModels;
+  const eventEmitter = options.eventEmitter ?? null;
 
   let cascadeHandler: CascadeHandler | null = null;
   if (options.cascade && Object.keys(options.cascade).length > 0 && dmmf) {
@@ -186,6 +188,10 @@ export function _buildSoftDeleteQueryHandlers(
         );
       }
 
+      eventEmitter?.emitSoftDeleted(
+        new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
+      );
+
       return result;
     },
 
@@ -220,13 +226,23 @@ export function _buildSoftDeleteQueryHandlers(
           );
         }
 
+        eventEmitter?.emitSoftDeleted(
+          new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
+        );
+
         return result;
       }
 
-      return (client as any)[modelKey].updateMany({
+      const result = await (client as any)[modelKey].updateMany({
         where: args.where,
         data,
       });
+
+      eventEmitter?.emitSoftDeleted(
+        new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
+      );
+
+      return result;
     },
 
     findMany: createReadHandler('findMany'),
