@@ -3,6 +3,8 @@ import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from '../soft-
 import { SoftDeleteModuleOptions } from '../interfaces/soft-delete-options.interface';
 import { CascadeHandler } from '../prisma/cascade-handler';
 import { SoftDeleteContext } from './soft-delete-context';
+import { SoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
+import { RestoredEvent, PurgedEvent } from '../events/soft-delete.events';
 
 @Injectable()
 export class SoftDeleteService {
@@ -13,6 +15,7 @@ export class SoftDeleteService {
     @Inject(SOFT_DELETE_MODULE_OPTIONS) private readonly options: SoftDeleteModuleOptions,
     @Inject(SOFT_DELETE_PRISMA_SERVICE) private readonly prisma: any,
     @Optional() @Inject(CascadeHandler) private readonly cascadeHandler: CascadeHandler | null,
+    @Optional() private readonly eventEmitter: SoftDeleteEventEmitter | null,
   ) {
     this.deletedAtField = options.deletedAtField ?? 'deletedAt';
     this.deletedByField = options.deletedByField ?? null;
@@ -68,6 +71,8 @@ export class SoftDeleteService {
       );
     }
 
+    this.eventEmitter?.emitRestored(new RestoredEvent(model, where));
+
     return restored as T;
   }
 
@@ -82,6 +87,38 @@ export class SoftDeleteService {
         return delegate.delete({ where }) as T;
       },
     );
+  }
+
+  /**
+   * Permanently delete soft-deleted records older than the specified date.
+   * Runs within skipSoftDelete context so the extension does not intercept the deleteMany.
+   */
+  async purge(
+    model: string,
+    options: { olderThan: Date; where?: Record<string, any> },
+  ): Promise<{ count: number }> {
+    const { olderThan, where: extraWhere } = options;
+
+    const result = await SoftDeleteContext.run(
+      { filterMode: 'default', skipSoftDelete: true },
+      async () => {
+        const delegate = this.getModelDelegate(model);
+        return delegate.deleteMany({
+          where: {
+            [this.deletedAtField]: { not: null, lt: olderThan },
+            ...extraWhere,
+          },
+        });
+      },
+    );
+
+    if (result.count > 0) {
+      this.eventEmitter?.emitPurged(
+        new PurgedEvent(model, result.count, olderThan),
+      );
+    }
+
+    return result;
   }
 
   /**
