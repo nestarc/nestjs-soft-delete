@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String
+  posts     Post[]
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by")
+
+  @@map("users")
+}
+
+model Post {
+  id        String    @id @default(uuid())
+  title     String
+  authorId  String    @map("author_id")
+  author    User      @relation(fields: [authorId], references: [id])
+  comments  Comment[]
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("posts")
+}
+
+model Comment {
+  id        String    @id @default(uuid())
+  content   String
+  postId    String    @map("post_id")
+  post      Post      @relation(fields: [postId], references: [id])
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("comments")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("sessions")
+}

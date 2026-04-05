@@ -22,3 +22,9 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+# Generated Prisma client (E2E tests)
+test/generated/
+
+# TypeScript build info
+.tsbuildinfo
