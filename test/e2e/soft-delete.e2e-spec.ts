@@ -19,42 +19,41 @@ const DATABASE_URL =
 
 // ── Raw SQL helpers ──────────────────────────────────────────────────
 
-const CREATE_TABLES_SQL = `
-  CREATE TABLE IF NOT EXISTS users (
+// Prisma $executeRawUnsafe only supports single statements (prepared statement limitation).
+// Split each CREATE/DROP into separate strings.
+const CREATE_TABLES = [
+  `CREATE TABLE IF NOT EXISTS users (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email      TEXT UNIQUE NOT NULL,
     name       TEXT NOT NULL,
     deleted_at TIMESTAMPTZ,
     deleted_by TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS posts (
+  )`,
+  `CREATE TABLE IF NOT EXISTS posts (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title      TEXT NOT NULL,
     author_id  UUID NOT NULL REFERENCES users(id),
     deleted_at TIMESTAMPTZ
-  );
-
-  CREATE TABLE IF NOT EXISTS comments (
+  )`,
+  `CREATE TABLE IF NOT EXISTS comments (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     content    TEXT NOT NULL,
     post_id    UUID NOT NULL REFERENCES posts(id),
     deleted_at TIMESTAMPTZ
-  );
-
-  CREATE TABLE IF NOT EXISTS sessions (
+  )`,
+  `CREATE TABLE IF NOT EXISTS sessions (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     token      TEXT UNIQUE NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  );
-`;
+  )`,
+];
 
-const DROP_TABLES_SQL = `
-  DROP TABLE IF EXISTS comments CASCADE;
-  DROP TABLE IF EXISTS posts CASCADE;
-  DROP TABLE IF EXISTS sessions CASCADE;
-  DROP TABLE IF EXISTS users CASCADE;
-`;
+const DROP_TABLES = [
+  'DROP TABLE IF EXISTS comments CASCADE',
+  'DROP TABLE IF EXISTS posts CASCADE',
+  'DROP TABLE IF EXISTS sessions CASCADE',
+  'DROP TABLE IF EXISTS users CASCADE',
+];
 
 // ── Setup ────────────────────────────────────────────────────────────
 
@@ -73,12 +72,16 @@ function extendClient(client: PrismaClient) {
 beforeAll(async () => {
   basePrisma = new PrismaClient({ datasourceUrl: DATABASE_URL });
   await basePrisma.$connect();
-  await basePrisma.$executeRawUnsafe(CREATE_TABLES_SQL);
+  for (const sql of CREATE_TABLES) {
+    await basePrisma.$executeRawUnsafe(sql);
+  }
   prisma = extendClient(basePrisma);
 });
 
 afterAll(async () => {
-  await basePrisma.$executeRawUnsafe(DROP_TABLES_SQL);
+  for (const sql of DROP_TABLES) {
+    await basePrisma.$executeRawUnsafe(sql);
+  }
   await basePrisma.$disconnect();
 });
 
@@ -109,7 +112,7 @@ describe('Soft-delete E2E with PostgreSQL', () => {
 
       // The row should still exist in the database
       const raw = await basePrisma.$queryRawUnsafe<any[]>(
-        `SELECT * FROM users WHERE id = $1`,
+        `SELECT * FROM users WHERE id = $1::uuid`,
         user.id,
       );
       expect(raw).toHaveLength(1);
@@ -220,7 +223,7 @@ describe('Soft-delete E2E with PostgreSQL', () => {
 
       // Row should be gone from the database entirely
       const raw = await basePrisma.$queryRawUnsafe<any[]>(
-        `SELECT * FROM sessions WHERE id = $1`,
+        `SELECT * FROM sessions WHERE id = $1::uuid`,
         session.id,
       );
       expect(raw).toHaveLength(0);
