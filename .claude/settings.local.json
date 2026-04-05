@@ -46,7 +46,19 @@
       "Bash(npx prisma:*)",
       "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts)",
       "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts -t \"DIAGNOSTIC\")",
-      "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts -t \"non-async\")"
+      "Bash(DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test npx vitest run --config vitest.e2e.config.ts -t \"non-async\")",
+      "Bash(gh --version)",
+      "Bash(cmd.exe /c \"gh --version\")",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Read(//c/Program Files/GitHub CLI//**)",
+      "Bash(export PATH=\"/c/Program Files/GitHub CLI:$PATH\")",
+      "Bash(gh auth:*)",
+      "Bash(gh run:*)",
+      "Bash(gh api:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm whoami:*)",
+      "Bash(npm view:*)"
     ]
   }
 }
