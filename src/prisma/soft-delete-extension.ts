@@ -142,7 +142,7 @@ export function _buildSoftDeleteQueryHandlers(
     });
   }
 
-  function createReadHandler(operationName: string) {
+  function createReadHandler(_operationName: string) {
     return async ({
       model,
       args,

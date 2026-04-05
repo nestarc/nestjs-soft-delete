@@ -42,7 +42,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       const client = createMockClient('User');
       const query = createMockQuery();
 
-      const result = await handlers.delete({
+      await handlers.delete({
         model: 'User',
         args: { where: { id: 1 } },
         query,

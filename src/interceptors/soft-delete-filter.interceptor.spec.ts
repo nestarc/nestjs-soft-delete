@@ -10,9 +10,9 @@ import { WITH_DELETED_KEY, ONLY_DELETED_KEY, SKIP_SOFT_DELETE_KEY } from '../sof
 describe('SoftDeleteFilterInterceptor', () => {
   let interceptor: SoftDeleteFilterInterceptor;
   let reflector: Reflector;
-  let mockHandler: Function;
+  let mockHandler: (...args: any[]) => any;
 
-  function createMockContext(handler: Function): ExecutionContext {
+  function createMockContext(handler: (...args: any[]) => any): ExecutionContext {
     return {
       getHandler: () => handler,
       getClass: () => ({}),
