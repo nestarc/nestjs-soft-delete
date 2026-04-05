@@ -8,7 +8,7 @@ const mockDmmf = {
       {
         name: 'User',
         fields: [
-          { name: 'id', kind: 'scalar', type: 'String' },
+          { name: 'id', kind: 'scalar', type: 'String', isId: true },
           {
             name: 'posts',
             kind: 'object',
@@ -21,7 +21,7 @@ const mockDmmf = {
       {
         name: 'Post',
         fields: [
-          { name: 'id', kind: 'scalar', type: 'String' },
+          { name: 'id', kind: 'scalar', type: 'String', isId: true },
           { name: 'authorId', kind: 'scalar', type: 'String' },
           {
             name: 'author',
@@ -44,7 +44,7 @@ const mockDmmf = {
       {
         name: 'Comment',
         fields: [
-          { name: 'id', kind: 'scalar', type: 'String' },
+          { name: 'id', kind: 'scalar', type: 'String', isId: true },
           { name: 'postId', kind: 'scalar', type: 'String' },
           {
             name: 'post',
@@ -116,6 +116,67 @@ describe('CascadeHandler', () => {
     });
   });
 
+  // ── findPrimaryKey ─────────────────────────────────────────────────────
+
+  describe('findPrimaryKey', () => {
+    it('should return "id" for a model with isId on the id field', () => {
+      expect(handler.findPrimaryKey('User')).toBe('id');
+    });
+
+    it('should return the custom PK field name when isId is on a non-id field', () => {
+      const customPkDmmf = {
+        datamodel: {
+          models: [
+            {
+              name: 'Tenant',
+              fields: [
+                { name: 'tenantCode', kind: 'scalar', type: 'String', isId: true },
+                { name: 'name', kind: 'scalar', type: 'String' },
+              ],
+            },
+          ],
+        },
+      };
+
+      const customHandler = new CascadeHandler({
+        cascade: {},
+        deletedAtField: 'deletedAt',
+        maxCascadeDepth: 3,
+        dmmf: customPkDmmf,
+      });
+
+      expect(customHandler.findPrimaryKey('Tenant')).toBe('tenantCode');
+    });
+
+    it('should fall back to "id" when the model is not found in DMMF', () => {
+      expect(handler.findPrimaryKey('NonExistent')).toBe('id');
+    });
+
+    it('should fall back to "id" when no field has isId set', () => {
+      const noPkDmmf = {
+        datamodel: {
+          models: [
+            {
+              name: 'Log',
+              fields: [
+                { name: 'logId', kind: 'scalar', type: 'String' },
+              ],
+            },
+          ],
+        },
+      };
+
+      const noPkHandler = new CascadeHandler({
+        cascade: {},
+        deletedAtField: 'deletedAt',
+        maxCascadeDepth: 3,
+        dmmf: noPkDmmf,
+      });
+
+      expect(noPkHandler.findPrimaryKey('Log')).toBe('id');
+    });
+  });
+
   // ── cascadeSoftDelete ──────────────────────────────────────────────────
 
   describe('cascadeSoftDelete', () => {
@@ -138,9 +199,9 @@ describe('CascadeHandler', () => {
         data: { deletedAt },
       });
 
-      // Should findMany posts to get IDs for recursion
+      // Should findMany posts that were just soft-deleted for recursion
       expect(prisma.post.findMany).toHaveBeenCalledWith({
-        where: { authorId: 'user-1' },
+        where: { authorId: 'user-1', deletedAt },
         select: { id: true },
       });
 
@@ -188,6 +249,81 @@ describe('CascadeHandler', () => {
       expect(prisma.user.updateMany).not.toHaveBeenCalled();
       expect(prisma.post.updateMany).not.toHaveBeenCalled();
       expect(prisma.comment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should NOT include previously-deleted children in cascade recursion', async () => {
+      const prisma = createMockPrisma();
+      const deletedAt = new Date('2025-01-15T10:00:00Z');
+
+      // findMany with deletedAt filter returns only the newly-deleted post
+      prisma.post.findMany.mockResolvedValueOnce([{ id: 'post-1' }]);
+      prisma.comment.findMany.mockResolvedValue([]);
+
+      await handler.cascadeSoftDelete(prisma, 'User', 'user-1', deletedAt, 0);
+
+      // The findMany should filter by the exact deletedAt timestamp
+      // (not return ALL children regardless of deletion state)
+      expect(prisma.post.findMany).toHaveBeenCalledWith({
+        where: { authorId: 'user-1', deletedAt },
+        select: { id: true },
+      });
+
+      // Only 1 post was returned, so comments updateMany should be called once
+      expect(prisma.comment.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('should use dynamic PK field from DMMF when cascading', async () => {
+      const customPkDmmf = {
+        datamodel: {
+          models: [
+            {
+              name: 'Organization',
+              fields: [
+                { name: 'orgCode', kind: 'scalar', type: 'String', isId: true },
+                { name: 'projects', kind: 'object', type: 'Project', isList: true },
+              ],
+            },
+            {
+              name: 'Project',
+              fields: [
+                { name: 'projectId', kind: 'scalar', type: 'String', isId: true },
+                { name: 'organizationId', kind: 'scalar', type: 'String' },
+                {
+                  name: 'organization',
+                  kind: 'object',
+                  type: 'Organization',
+                  isList: false,
+                  relationFromFields: ['organizationId'],
+                  relationToFields: ['orgCode'],
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const customHandler = new CascadeHandler({
+        cascade: { Organization: ['Project'] },
+        deletedAtField: 'deletedAt',
+        maxCascadeDepth: 3,
+        dmmf: customPkDmmf,
+      });
+
+      const prisma = {
+        project: {
+          updateMany: vi.fn(async () => ({ count: 1 })),
+          findMany: vi.fn(async () => []),
+        },
+      };
+
+      const deletedAt = new Date('2025-01-15T10:00:00Z');
+      await customHandler.cascadeSoftDelete(prisma, 'Organization', 'org-1', deletedAt, 0);
+
+      // Should use the dynamic PK field 'projectId' in the select
+      expect(prisma.project.findMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', deletedAt },
+        select: { projectId: true },
+      });
     });
   });
 

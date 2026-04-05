@@ -28,6 +28,16 @@ export class CascadeHandler {
   }
 
   /**
+   * Finds the primary key field name for a given model by inspecting the
+   * Prisma DMMF datamodel. Falls back to 'id' if the model or PK is not found.
+   */
+  findPrimaryKey(model: string): string {
+    const modelDef = this.dmmf.datamodel.models.find((m: any) => m.name === model);
+    const pkField = modelDef?.fields.find((f: any) => f.isId);
+    return pkField?.name ?? 'id';
+  }
+
+  /**
    * Finds the foreign key field on the child model that references the parent model
    * by inspecting the Prisma DMMF datamodel. Results are cached for performance.
    *
@@ -87,6 +97,7 @@ export class CascadeHandler {
     for (const childModel of children) {
       const fk = this.findForeignKey(parentModel, childModel);
       const childKey = childModel.charAt(0).toLowerCase() + childModel.slice(1);
+      const pkField = this.findPrimaryKey(childModel);
 
       // Soft-delete all non-deleted children of this parent
       await prisma[childKey].updateMany({
@@ -99,17 +110,17 @@ export class CascadeHandler {
         },
       });
 
-      // Find affected children to recurse into
+      // Find only children that were just soft-deleted (matching deletedAt) to recurse into
       const affectedChildren = await prisma[childKey].findMany({
-        where: { [fk]: parentId },
-        select: { id: true },
+        where: { [fk]: parentId, [this.deletedAtField]: deletedAt },
+        select: { [pkField]: true },
       });
 
       for (const child of affectedChildren) {
         await this.cascadeSoftDelete(
           prisma,
           childModel,
-          child.id,
+          child[pkField],
           deletedAt,
           depth + 1,
         );
@@ -144,6 +155,7 @@ export class CascadeHandler {
     for (const childModel of children) {
       const fk = this.findForeignKey(parentModel, childModel);
       const childKey = childModel.charAt(0).toLowerCase() + childModel.slice(1);
+      const pkField = this.findPrimaryKey(childModel);
 
       // Find affected children BEFORE restoring (to capture their deletedAt for recursion)
       const affectedChildren = await prisma[childKey].findMany({
@@ -154,7 +166,7 @@ export class CascadeHandler {
             lte: upperBound,
           },
         },
-        select: { id: true, [this.deletedAtField]: true },
+        select: { [pkField]: true, [this.deletedAtField]: true },
       });
 
       // Restore all children matching the timestamp window
@@ -176,7 +188,7 @@ export class CascadeHandler {
         await this.cascadeRestore(
           prisma,
           childModel,
-          child.id,
+          child[pkField],
           child[this.deletedAtField],
           depth + 1,
         );
