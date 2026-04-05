@@ -2,8 +2,9 @@ import { Prisma } from '@prisma/client';
 import { CascadeHandler } from './cascade-handler';
 import { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
 import { SoftDeleteContext } from '../services/soft-delete-context';
-import { DEFAULT_DELETED_AT_FIELD } from '../soft-delete.constants';
+import { DEFAULT_DELETED_AT_FIELD, DEFAULT_MAX_CASCADE_DEPTH } from '../soft-delete.constants';
 import { SoftDeletedEvent } from '../events/soft-delete.events';
+import { getRegisteredSoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
 
 /**
  * Determines whether a given model name is in the list of soft-delete models.
@@ -131,7 +132,7 @@ export function _buildSoftDeleteQueryHandlers(
   const deletedAtField = options.deletedAtField ?? DEFAULT_DELETED_AT_FIELD;
   const deletedByField = options.deletedByField ?? null;
   const softDeleteModels = options.softDeleteModels;
-  const eventEmitter = options.eventEmitter ?? null;
+  const getEventEmitter = () => options.eventEmitter ?? getRegisteredSoftDeleteEventEmitter();
 
   let cascadeHandler: CascadeHandler | null = null;
   if (options.cascade && Object.keys(options.cascade).length > 0 && dmmf) {
@@ -139,7 +140,7 @@ export function _buildSoftDeleteQueryHandlers(
       cascade: options.cascade,
       deletedAtField,
       deletedByField,
-      maxCascadeDepth: options.maxCascadeDepth ?? 5,
+      maxCascadeDepth: options.maxCascadeDepth ?? DEFAULT_MAX_CASCADE_DEPTH,
       dmmf,
     });
   }
@@ -188,7 +189,7 @@ export function _buildSoftDeleteQueryHandlers(
         );
       }
 
-      eventEmitter?.emitSoftDeleted(
+      getEventEmitter()?.emitSoftDeleted(
         new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
       );
 
@@ -226,7 +227,7 @@ export function _buildSoftDeleteQueryHandlers(
           );
         }
 
-        eventEmitter?.emitSoftDeleted(
+        getEventEmitter()?.emitSoftDeleted(
           new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
         );
 
@@ -238,7 +239,7 @@ export function _buildSoftDeleteQueryHandlers(
         data,
       });
 
-      eventEmitter?.emitSoftDeleted(
+      getEventEmitter()?.emitSoftDeleted(
         new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
       );
 

@@ -212,7 +212,12 @@ describe('SoftDeleteModule', () => {
         prismaServiceToken: MOCK_PRISMA_TOKEN,
       });
 
-      expect(dynamicModule.providers).toContainEqual(SoftDeleteEventEmitter);
+      const eventEmitterProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === SoftDeleteEventEmitter,
+      ) as any;
+
+      expect(eventEmitterProvider).toBeDefined();
+      expect(eventEmitterProvider.useFactory).toBeTypeOf('function');
       expect(dynamicModule.exports).toContain(SoftDeleteEventEmitter);
     });
   });

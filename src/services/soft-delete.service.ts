@@ -106,8 +106,8 @@ export class SoftDeleteService {
         const delegate = this.getModelDelegate(model);
         return delegate.deleteMany({
           where: {
-            [this.deletedAtField]: { not: null, lt: olderThan },
             ...extraWhere,
+            [this.deletedAtField]: { not: null, lt: olderThan },
           },
         });
       },

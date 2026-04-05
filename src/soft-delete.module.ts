@@ -8,7 +8,7 @@ import { SoftDeleteActorMiddleware } from './middleware/soft-delete-actor.middle
 import { SoftDeleteEventEmitter } from './events/soft-delete-event-emitter';
 import { Prisma } from '@prisma/client';
 import { CascadeHandler } from './prisma/cascade-handler';
-import { DEFAULT_DELETED_AT_FIELD } from './soft-delete.constants';
+import { DEFAULT_DELETED_AT_FIELD, DEFAULT_MAX_CASCADE_DEPTH } from './soft-delete.constants';
 
 function buildCascadeHandlerProvider() {
   return {
@@ -21,11 +21,27 @@ function buildCascadeHandlerProvider() {
         cascade: options.cascade,
         deletedAtField: options.deletedAtField ?? DEFAULT_DELETED_AT_FIELD,
         deletedByField: options.deletedByField,
-        maxCascadeDepth: options.maxCascadeDepth ?? 5,
+        maxCascadeDepth: options.maxCascadeDepth ?? DEFAULT_MAX_CASCADE_DEPTH,
         dmmf: (Prisma as any).dmmf,
       });
     },
     inject: [SOFT_DELETE_MODULE_OPTIONS],
+  };
+}
+
+function buildEventEmitterProvider() {
+  return {
+    provide: SoftDeleteEventEmitter,
+    useFactory: (options: SoftDeleteModuleOptions, eventEmitter: any | null) => {
+      if (!options.enableEvents) {
+        return null;
+      }
+      return new SoftDeleteEventEmitter(eventEmitter);
+    },
+    inject: [
+      SOFT_DELETE_MODULE_OPTIONS,
+      { token: 'EventEmitter2', optional: true },
+    ],
   };
 }
 
@@ -77,7 +93,7 @@ export class SoftDeleteModule implements NestModule {
       },
       buildCascadeHandlerProvider(),
       SoftDeleteService,
-      SoftDeleteEventEmitter,
+      buildEventEmitterProvider(),
       {
         provide: APP_INTERCEPTOR,
         useClass: SoftDeleteFilterInterceptor,

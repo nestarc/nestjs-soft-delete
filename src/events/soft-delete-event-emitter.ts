@@ -3,11 +3,29 @@ import { SoftDeletedEvent } from './soft-delete.events';
 import { RestoredEvent } from './soft-delete.events';
 import { PurgedEvent } from './soft-delete.events';
 
+let registeredSoftDeleteEventEmitter: SoftDeleteEventEmitter | null = null;
+
+function registerSoftDeleteEventEmitter(instance: SoftDeleteEventEmitter): void {
+  registeredSoftDeleteEventEmitter = instance;
+}
+
+export function getRegisteredSoftDeleteEventEmitter(): SoftDeleteEventEmitter | null {
+  return registeredSoftDeleteEventEmitter;
+}
+
+export function resetRegisteredSoftDeleteEventEmitter(): void {
+  registeredSoftDeleteEventEmitter = null;
+}
+
 @Injectable()
 export class SoftDeleteEventEmitter {
   constructor(
     @Optional() @Inject('EventEmitter2') private readonly eventEmitter: any | null,
-  ) {}
+  ) {
+    if (this.eventEmitter) {
+      registerSoftDeleteEventEmitter(this);
+    }
+  }
 
   get isEnabled(): boolean {
     return this.eventEmitter != null;

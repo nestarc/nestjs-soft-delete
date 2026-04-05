@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { _buildSoftDeleteQueryHandlers, createPrismaSoftDeleteExtension } from './soft-delete-extension';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import type { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
+import { resetRegisteredSoftDeleteEventEmitter, SoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
 
 /**
  * Creates a mock query function that resolves with whatever args it receives,
@@ -32,6 +33,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
   let handlers: ReturnType<typeof _buildSoftDeleteQueryHandlers>;
 
   beforeEach(() => {
+    resetRegisteredSoftDeleteEventEmitter();
     handlers = _buildSoftDeleteQueryHandlers(defaultOptions);
   });
 
@@ -202,6 +204,28 @@ describe('_buildSoftDeleteQueryHandlers', () => {
           client,
         }),
       ).resolves.not.toThrow();
+    });
+
+    it('should fall back to the registered global event emitter', async () => {
+      const mockEmitter = { emit: vi.fn() };
+      new SoftDeleteEventEmitter(mockEmitter);
+      const client = createMockClient('User');
+      const query = createMockQuery();
+
+      await handlers.delete({
+        model: 'User',
+        args: { where: { id: 1 } },
+        query,
+        client,
+      });
+
+      expect(mockEmitter.emit).toHaveBeenCalledWith(
+        'soft-delete.deleted',
+        expect.objectContaining({
+          model: 'User',
+          where: { id: 1 },
+        }),
+      );
     });
   });
 

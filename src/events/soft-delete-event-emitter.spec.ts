@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SoftDeleteEventEmitter } from './soft-delete-event-emitter';
+import {
+  getRegisteredSoftDeleteEventEmitter,
+  resetRegisteredSoftDeleteEventEmitter,
+  SoftDeleteEventEmitter,
+} from './soft-delete-event-emitter';
 import { SoftDeletedEvent, RestoredEvent, PurgedEvent } from './soft-delete.events';
 
 describe('SoftDeleteEventEmitter', () => {
+  beforeEach(() => {
+    resetRegisteredSoftDeleteEventEmitter();
+  });
+
   describe('with EventEmitter2 available', () => {
     let mockEventEmitter: any;
     let emitter: SoftDeleteEventEmitter;
@@ -50,6 +58,10 @@ describe('SoftDeleteEventEmitter', () => {
     it('should report isEnabled as true', () => {
       expect(emitter.isEnabled).toBe(true);
     });
+
+    it('should register enabled emitters for extension fallback', () => {
+      expect(getRegisteredSoftDeleteEventEmitter()).toBe(emitter);
+    });
   });
 
   describe('without EventEmitter2 (graceful degradation)', () => {
@@ -79,6 +91,10 @@ describe('SoftDeleteEventEmitter', () => {
 
     it('should report isEnabled as false', () => {
       expect(emitter.isEnabled).toBe(false);
+    });
+
+    it('should not register disabled emitters globally', () => {
+      expect(getRegisteredSoftDeleteEventEmitter()).toBeNull();
     });
   });
 });

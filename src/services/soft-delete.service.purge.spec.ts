@@ -100,4 +100,20 @@ describe('SoftDeleteService.purge()', () => {
       },
     });
   });
+
+  it('should not allow additional where conditions to override the deletedAt guard', async () => {
+    const olderThan = new Date('2024-01-01');
+
+    await service.purge('User', {
+      olderThan,
+      where: { deletedAt: null, role: 'guest' },
+    });
+
+    expect(mockPrisma.user.deleteMany).toHaveBeenCalledWith({
+      where: {
+        deletedAt: { not: null, lt: olderThan },
+        role: 'guest',
+      },
+    });
+  });
 });
