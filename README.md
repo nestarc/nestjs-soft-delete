@@ -146,23 +146,23 @@ export class UsersController {
     private readonly softDelete: SoftDeleteService,
   ) {}
 
-  // Soft-deletes the user (sets deletedAt). Standard Prisma delete call.
+  // Soft-deletes the user (sets deletedAt) via the extended client
   @Delete(':id')
   remove(@Param('id') id: string) {
-    return this.prisma.user.delete({ where: { id: +id } });
+    return this.prisma.client.user.delete({ where: { id: +id } });
   }
 
   // Normal findMany — deleted users are automatically excluded
   @Get()
   findAll() {
-    return this.prisma.user.findMany();
+    return this.prisma.client.user.findMany();
   }
 
   // Include soft-deleted users in results
   @Get('all')
   @WithDeleted()
   findAllIncludingDeleted() {
-    return this.prisma.user.findMany();
+    return this.prisma.client.user.findMany();
   }
 
   // Restore a soft-deleted user
@@ -219,7 +219,7 @@ Include soft-deleted records alongside active ones.
 @Get('trash-and-active')
 @WithDeleted()
 findAll() {
-  return this.prisma.post.findMany();
+  return this.prisma.client.post.findMany();
 }
 ```
 
@@ -231,7 +231,7 @@ Return only soft-deleted records.
 @Get('trash')
 @OnlyDeleted()
 findTrashed() {
-  return this.prisma.post.findMany();
+  return this.prisma.client.post.findMany();
 }
 ```
 
@@ -243,7 +243,7 @@ Bypass soft-delete logic entirely — `delete` performs a real hard-delete.
 @Delete(':id/hard')
 @SkipSoftDelete()
 hardDelete(@Param('id') id: string) {
-  return this.prisma.post.delete({ where: { id: +id } });
+  return this.prisma.client.post.delete({ where: { id: +id } });
 }
 ```
 
