@@ -58,7 +58,21 @@
       "Bash(gh api:*)",
       "Bash(npx eslint:*)",
       "Bash(npm whoami:*)",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(find /c/Users/ksy/Documents/GitHub/nestjs-soft-delete -type f -name \"*.json\" -o -name \"*.md\")",
+      "WebSearch",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(find /c/Users/ksy/Documents/GitHub/nestjs-soft-delete -name \"vitest.config.ts\" -o -name \"vitest.e2e.config.ts\" -o -name \"tsup.config.ts\")",
+      "Bash(git -C /c/Users/ksy/Documents/GitHub/nestjs-soft-delete log --oneline -20)",
+      "WebFetch(domain:api.npmjs.org)",
+      "Bash(npm run:*)",
+      "Bash(find /c/Users/ksy/Documents/GitHub/nestjs-soft-delete/src -name \"*.spec.ts\")",
+      "Bash(find /c/Users/ksy/Documents/GitHub/nestjs-soft-delete/src -name \"*.spec.ts\" -exec wc -l {} +)",
+      "Bash(wc -l /c/Users/ksy/Documents/GitHub/nestjs-soft-delete/src/**/*.ts)",
+      "Bash(cat /c/Users/ksy/Documents/GitHub/nestjs-soft-delete/.github/workflows/*.yml)",
+      "Bash(node -e \"const m = require\\(''./dist/index.js''\\); console.log\\(Object.keys\\(m\\).sort\\(\\).join\\(''\\\\n''\\)\\)\")",
+      "Bash(npm pack:*)",
+      "Bash(node -e \"const m = require\\(''./dist/testing/index.js''\\); console.log\\(Object.keys\\(m\\).sort\\(\\).join\\(''\\\\n''\\)\\)\")"
     ]
   }
 }
