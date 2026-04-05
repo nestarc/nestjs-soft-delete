@@ -5,6 +5,7 @@ import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from './soft-d
 import { SoftDeleteService } from './services/soft-delete.service';
 import { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.interceptor';
 import type { SoftDeleteModuleOptions } from './interfaces/soft-delete-options.interface';
+import { SoftDeleteEventEmitter } from './events/soft-delete-event-emitter';
 
 describe('SoftDeleteModule', () => {
   const MOCK_PRISMA_TOKEN = 'PrismaService';
@@ -77,6 +78,24 @@ describe('SoftDeleteModule', () => {
       const dynamicModule = SoftDeleteModule.forRoot(options);
 
       expect(dynamicModule.exports).toContain(SOFT_DELETE_MODULE_OPTIONS);
+    });
+
+    it('should provide SoftDeleteEventEmitter when enableEvents is true', () => {
+      const dynamicModule = SoftDeleteModule.forRoot({
+        ...options,
+        enableEvents: true,
+      });
+
+      expect(dynamicModule.providers).toContainEqual(SoftDeleteEventEmitter);
+      expect(dynamicModule.exports).toContain(SoftDeleteEventEmitter);
+    });
+
+    it('should not provide SoftDeleteEventEmitter when enableEvents is not set', () => {
+      const dynamicModule = SoftDeleteModule.forRoot(options);
+      const hasEmitter = (dynamicModule.providers as any[])?.some(
+        (p: any) => p === SoftDeleteEventEmitter || p?.useClass === SoftDeleteEventEmitter,
+      );
+      expect(hasEmitter).toBe(false);
     });
   });
 
@@ -172,6 +191,16 @@ describe('SoftDeleteModule', () => {
         (p: any) => p.provide === SOFT_DELETE_MODULE_OPTIONS,
       ) as any;
       expect(optionsProvider.inject).toEqual([]);
+    });
+
+    it('should always provide SoftDeleteEventEmitter in forRootAsync', () => {
+      const dynamicModule = SoftDeleteModule.forRootAsync({
+        useFactory: () => options,
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
+      });
+
+      expect(dynamicModule.providers).toContainEqual(SoftDeleteEventEmitter);
+      expect(dynamicModule.exports).toContain(SoftDeleteEventEmitter);
     });
   });
 

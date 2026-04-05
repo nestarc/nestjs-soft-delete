@@ -7,6 +7,7 @@ describe('SoftDeleteService', () => {
   let service: SoftDeleteService;
   let mockPrisma: any;
   let mockCascadeHandler: any;
+  let mockEventEmitter: any;
   const deletedDate = new Date('2024-01-15T10:00:00Z');
 
   const defaultOptions: SoftDeleteModuleOptions = {
@@ -34,7 +35,14 @@ describe('SoftDeleteService', () => {
       cascadeRestore: vi.fn().mockResolvedValue(undefined),
     };
 
-    service = new SoftDeleteService(defaultOptions, mockPrisma, mockCascadeHandler);
+    mockEventEmitter = {
+      emitSoftDeleted: vi.fn(),
+      emitRestored: vi.fn(),
+      emitPurged: vi.fn(),
+      isEnabled: true,
+    };
+
+    service = new SoftDeleteService(defaultOptions, mockPrisma, mockCascadeHandler, mockEventEmitter);
   });
 
   describe('restore()', () => {
@@ -102,7 +110,7 @@ describe('SoftDeleteService', () => {
     });
 
     it('should not cascade restore when cascadeHandler is null', async () => {
-      const serviceNoCascade = new SoftDeleteService(defaultOptions, mockPrisma, null);
+      const serviceNoCascade = new SoftDeleteService(defaultOptions, mockPrisma, null, mockEventEmitter);
       const deletedUser = {
         id: '1',
         name: 'Alice',
@@ -120,6 +128,34 @@ describe('SoftDeleteService', () => {
       await serviceNoCascade.restore('User', { id: '1' });
 
       expect(mockCascadeHandler.cascadeRestore).not.toHaveBeenCalled();
+    });
+
+    it('should emit RestoredEvent after successful restore', async () => {
+      const deletedUser = { id: '1', name: 'Alice', deletedAt: deletedDate };
+      const restoredUser = { id: '1', name: 'Alice', deletedAt: null };
+
+      mockPrisma.user.findFirst.mockResolvedValue(deletedUser);
+      mockPrisma.user.update.mockResolvedValue(restoredUser);
+
+      await service.restore('User', { id: '1' });
+
+      expect(mockEventEmitter.emitRestored).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'User',
+          where: { id: '1' },
+        }),
+      );
+    });
+
+    it('should not throw when eventEmitter is null on restore', async () => {
+      const serviceNoEvents = new SoftDeleteService(defaultOptions, mockPrisma, mockCascadeHandler, null);
+      const deletedUser = { id: '1', deletedAt: deletedDate };
+      const restoredUser = { id: '1', deletedAt: null };
+
+      mockPrisma.user.findFirst.mockResolvedValue(deletedUser);
+      mockPrisma.user.update.mockResolvedValue(restoredUser);
+
+      await expect(serviceNoEvents.restore('User', { id: '1' })).resolves.not.toThrow();
     });
   });
 
@@ -193,7 +229,7 @@ describe('SoftDeleteService', () => {
         softDeleteModels: ['User'],
         prismaServiceToken: 'PRISMA',
       };
-      const svc = new SoftDeleteService(optionsNoField, mockPrisma, null);
+      const svc = new SoftDeleteService(optionsNoField, mockPrisma, null, mockEventEmitter);
 
       const deletedUser = { id: '1', deletedAt: deletedDate };
       mockPrisma.user.findFirst.mockResolvedValue(deletedUser);

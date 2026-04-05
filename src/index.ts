@@ -22,5 +22,9 @@ export { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.i
 export { SoftDeleteFieldMissingError } from './errors/soft-delete-field-missing.error';
 export { CascadeRelationNotFoundError } from './errors/cascade-relation-not-found.error';
 
+// Events
+export { SoftDeletedEvent, RestoredEvent, PurgedEvent } from './events/soft-delete.events';
+export { SoftDeleteEventEmitter } from './events/soft-delete-event-emitter';
+
 // Constants
 export { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from './soft-delete.constants';

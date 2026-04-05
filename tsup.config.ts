@@ -18,5 +18,6 @@ export default defineConfig({
     'rxjs',
     '@nestarc/tenancy',
     '@nestarc/audit-log',
+    '@nestjs/event-emitter',
   ],
 });

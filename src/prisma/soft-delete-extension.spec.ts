@@ -161,6 +161,48 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       expect(query).not.toHaveBeenCalled();
       expect(client.user.update).toHaveBeenCalledTimes(1);
     });
+
+    it('should emit SoftDeletedEvent when eventEmitter is provided', async () => {
+      const mockEmitter = { emitSoftDeleted: vi.fn() };
+      const handlersWithEvents = _buildSoftDeleteQueryHandlers({
+        ...defaultOptions,
+        eventEmitter: mockEmitter,
+      });
+      const client = createMockClient('User');
+      const query = createMockQuery();
+
+      await handlersWithEvents.delete({
+        model: 'User',
+        args: { where: { id: 1 } },
+        query,
+        client,
+      });
+
+      expect(mockEmitter.emitSoftDeleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'User',
+          where: { id: 1 },
+        }),
+      );
+    });
+
+    it('should not throw when eventEmitter is null', async () => {
+      const handlersNoEvents = _buildSoftDeleteQueryHandlers({
+        ...defaultOptions,
+        eventEmitter: null,
+      });
+      const client = createMockClient('User');
+      const query = createMockQuery();
+
+      await expect(
+        handlersNoEvents.delete({
+          model: 'User',
+          args: { where: { id: 1 } },
+          query,
+          client,
+        }),
+      ).resolves.not.toThrow();
+    });
   });
 
   describe('deleteMany', () => {
@@ -239,6 +281,30 @@ describe('_buildSoftDeleteQueryHandlers', () => {
 
       const updateCall = client.post.updateMany.mock.calls[0][0];
       expect(updateCall.data.deletedBy).toBe('user-99');
+    });
+
+    it('should emit SoftDeletedEvent for deleteMany when eventEmitter is provided', async () => {
+      const mockEmitter = { emitSoftDeleted: vi.fn() };
+      const handlersWithEvents = _buildSoftDeleteQueryHandlers({
+        ...defaultOptions,
+        eventEmitter: mockEmitter,
+      });
+      const client = createMockClient('User');
+      const query = createMockQuery();
+
+      await handlersWithEvents.deleteMany({
+        model: 'User',
+        args: { where: { role: 'guest' } },
+        query,
+        client,
+      });
+
+      expect(mockEmitter.emitSoftDeleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'User',
+          where: { role: 'guest' },
+        }),
+      );
     });
   });
 

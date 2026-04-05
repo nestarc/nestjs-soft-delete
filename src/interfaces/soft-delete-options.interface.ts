@@ -9,6 +9,8 @@ export interface SoftDeleteModuleOptions {
   maxCascadeDepth?: number;
   /** DI token for the PrismaService provider in the consumer's module */
   prismaServiceToken: any;
+  /** Enable event emission. Requires @nestjs/event-emitter to be installed. Default: false */
+  enableEvents?: boolean;
 }
 
 export interface SoftDeleteModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
@@ -24,4 +26,6 @@ export interface SoftDeleteExtensionOptions {
   deletedByField?: string | null;
   cascade?: Record<string, string[]>;
   maxCascadeDepth?: number;
+  /** Optional event emitter for soft-delete lifecycle events */
+  eventEmitter?: { emitSoftDeleted: (event: any) => void } | null;
 }
