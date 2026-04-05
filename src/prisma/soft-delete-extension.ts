@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { CascadeHandler } from './cascade-handler';
 import { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import { DEFAULT_DELETED_AT_FIELD } from '../soft-delete.constants';
@@ -118,13 +119,28 @@ export interface SoftDeleteQueryHandlers {
  * Builds the raw soft-delete query handler functions.
  * Exported for unit testing so handlers can be tested without
  * requiring a real Prisma client or Prisma.defineExtension.
+ *
+ * @param options - Soft delete extension configuration
+ * @param dmmf - Optional Prisma DMMF metadata; required when cascade is configured
  */
 export function _buildSoftDeleteQueryHandlers(
   options: SoftDeleteExtensionOptions,
+  dmmf?: any,
 ): SoftDeleteQueryHandlers {
   const deletedAtField = options.deletedAtField ?? DEFAULT_DELETED_AT_FIELD;
   const deletedByField = options.deletedByField ?? null;
   const softDeleteModels = options.softDeleteModels;
+
+  let cascadeHandler: CascadeHandler | null = null;
+  if (options.cascade && Object.keys(options.cascade).length > 0 && dmmf) {
+    cascadeHandler = new CascadeHandler({
+      cascade: options.cascade,
+      deletedAtField,
+      deletedByField,
+      maxCascadeDepth: options.maxCascadeDepth ?? 5,
+      dmmf,
+    });
+  }
 
   function createReadHandler(operationName: string) {
     return async ({
@@ -154,10 +170,23 @@ export function _buildSoftDeleteQueryHandlers(
 
       const data = buildSoftDeleteData(deletedAtField, deletedByField);
       const modelKey = model.charAt(0).toLowerCase() + model.slice(1);
-      return (client as any)[modelKey].update({
+      const result = await (client as any)[modelKey].update({
         where: args.where,
         data,
       });
+
+      if (cascadeHandler) {
+        const pkField = cascadeHandler.findPrimaryKey(model);
+        await cascadeHandler.cascadeSoftDelete(
+          client,
+          model,
+          result[pkField],
+          data[deletedAtField] as Date,
+          0,
+        );
+      }
+
+      return result;
     },
 
     async deleteMany({ model, args, query, client }) {
@@ -167,6 +196,33 @@ export function _buildSoftDeleteQueryHandlers(
 
       const data = buildSoftDeleteData(deletedAtField, deletedByField);
       const modelKey = model.charAt(0).toLowerCase() + model.slice(1);
+
+      if (cascadeHandler) {
+        const pkField = cascadeHandler.findPrimaryKey(model);
+        // Find records BEFORE soft-deleting them
+        const toDelete = await (client as any)[modelKey].findMany({
+          where: { ...args.where, [deletedAtField]: null },
+          select: { [pkField]: true },
+        });
+
+        const result = await (client as any)[modelKey].updateMany({
+          where: args.where,
+          data,
+        });
+
+        for (const record of toDelete) {
+          await cascadeHandler.cascadeSoftDelete(
+            client,
+            model,
+            record[pkField],
+            data[deletedAtField] as Date,
+            0,
+          );
+        }
+
+        return result;
+      }
+
       return (client as any)[modelKey].updateMany({
         where: args.where,
         data,
@@ -191,7 +247,7 @@ export function _buildSoftDeleteQueryHandlers(
  */
 export function createPrismaSoftDeleteExtension(options: SoftDeleteExtensionOptions) {
   return Prisma.defineExtension((client) => {
-    const handlers = _buildSoftDeleteQueryHandlers(options);
+    const handlers = _buildSoftDeleteQueryHandlers(options, Prisma.dmmf);
 
     return client.$extends({
       query: {

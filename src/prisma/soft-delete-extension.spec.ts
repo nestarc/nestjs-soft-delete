@@ -521,6 +521,179 @@ describe('_buildSoftDeleteQueryHandlers', () => {
     });
   });
 
+  // ── Cascade integration ──────────────────────────────────────────────
+
+  describe('cascade integration', () => {
+    const cascadeDmmf = {
+      datamodel: {
+        models: [
+          {
+            name: 'User',
+            fields: [
+              { name: 'id', kind: 'scalar', type: 'String', isId: true },
+              {
+                name: 'posts',
+                kind: 'object',
+                type: 'Post',
+                relationName: 'UserPosts',
+                isList: true,
+              },
+            ],
+          },
+          {
+            name: 'Post',
+            fields: [
+              { name: 'id', kind: 'scalar', type: 'String', isId: true },
+              { name: 'authorId', kind: 'scalar', type: 'String' },
+              {
+                name: 'author',
+                kind: 'object',
+                type: 'User',
+                relationName: 'UserPosts',
+                isList: false,
+                relationFromFields: ['authorId'],
+                relationToFields: ['id'],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const cascadeOptions: SoftDeleteExtensionOptions = {
+      softDeleteModels: ['User', 'Post'],
+      cascade: { User: ['Post'] },
+      maxCascadeDepth: 3,
+    };
+
+    function createCascadeMockClient() {
+      return {
+        user: {
+          update: vi.fn(async (args: any) => ({ id: 'user-1', ...args.data })),
+          updateMany: vi.fn(async () => ({ count: 1 })),
+          findMany: vi.fn(async () => []),
+        },
+        post: {
+          update: vi.fn(async (args: any) => ({ id: 'post-1', ...args.data })),
+          updateMany: vi.fn(async () => ({ count: 2 })),
+          findMany: vi.fn(async () => []),
+        },
+      };
+    }
+
+    it('should trigger cascade on delete when cascade options are configured', async () => {
+      const cascadeHandlers = _buildSoftDeleteQueryHandlers(cascadeOptions, cascadeDmmf);
+      const client = createCascadeMockClient();
+      const query = createMockQuery();
+
+      await cascadeHandlers.delete({
+        model: 'User',
+        args: { where: { id: 'user-1' } },
+        query,
+        client,
+      });
+
+      // Original query should NOT be called
+      expect(query).not.toHaveBeenCalled();
+      // Should have called update on user
+      expect(client.user.update).toHaveBeenCalledTimes(1);
+      // Should have cascaded to posts (updateMany for soft-delete + findMany for recursion)
+      expect(client.post.updateMany).toHaveBeenCalledTimes(1);
+      expect(client.post.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('should trigger cascade on deleteMany for each affected record', async () => {
+      const cascadeHandlers = _buildSoftDeleteQueryHandlers(cascadeOptions, cascadeDmmf);
+      const client = createCascadeMockClient();
+      const query = createMockQuery();
+
+      // findMany returns 2 users to be deleted
+      client.user.findMany.mockResolvedValueOnce([
+        { id: 'user-1' },
+        { id: 'user-2' },
+      ]);
+
+      await cascadeHandlers.deleteMany({
+        model: 'User',
+        args: { where: { role: 'inactive' } },
+        query,
+        client,
+      });
+
+      // Original query should NOT be called
+      expect(query).not.toHaveBeenCalled();
+      // Should have found records before deleting
+      expect(client.user.findMany).toHaveBeenCalledTimes(1);
+      // Should have called updateMany on user
+      expect(client.user.updateMany).toHaveBeenCalledTimes(1);
+      // Should have cascaded for each user (2 users -> 2 cascade calls)
+      expect(client.post.updateMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('should NOT trigger cascade when cascade is not configured', async () => {
+      const noCascadeOptions: SoftDeleteExtensionOptions = {
+        softDeleteModels: ['User', 'Post'],
+        // No cascade option
+      };
+      const noCascadeHandlers = _buildSoftDeleteQueryHandlers(noCascadeOptions);
+      const client = createCascadeMockClient();
+      const query = createMockQuery();
+
+      await noCascadeHandlers.delete({
+        model: 'User',
+        args: { where: { id: 'user-1' } },
+        query,
+        client,
+      });
+
+      // Should have called update on user
+      expect(client.user.update).toHaveBeenCalledTimes(1);
+      // Should NOT have cascaded to posts
+      expect(client.post.updateMany).not.toHaveBeenCalled();
+      expect(client.post.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should NOT trigger cascade when dmmf is not provided', async () => {
+      // cascade is configured but no dmmf is passed
+      const handlersNoDmmf = _buildSoftDeleteQueryHandlers(cascadeOptions);
+      const client = createCascadeMockClient();
+      const query = createMockQuery();
+
+      await handlersNoDmmf.delete({
+        model: 'User',
+        args: { where: { id: 'user-1' } },
+        query,
+        client,
+      });
+
+      // Should have called update on user
+      expect(client.user.update).toHaveBeenCalledTimes(1);
+      // Should NOT have cascaded to posts (no dmmf)
+      expect(client.post.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should find records with deletedAt null filter before deleteMany cascade', async () => {
+      const cascadeHandlers = _buildSoftDeleteQueryHandlers(cascadeOptions, cascadeDmmf);
+      const client = createCascadeMockClient();
+      const query = createMockQuery();
+
+      client.user.findMany.mockResolvedValueOnce([{ id: 'user-1' }]);
+
+      await cascadeHandlers.deleteMany({
+        model: 'User',
+        args: { where: { role: 'inactive' } },
+        query,
+        client,
+      });
+
+      // Should filter by deletedAt: null when finding records to cascade
+      expect(client.user.findMany).toHaveBeenCalledWith({
+        where: { role: 'inactive', deletedAt: null },
+        select: { id: true },
+      });
+    });
+  });
+
   // ── createPrismaSoftDeleteExtension (smoke test) ──────────────────────
 
   describe('createPrismaSoftDeleteExtension', () => {
