@@ -486,6 +486,22 @@ const activeUsers = await prisma.user.findMany();
 
 ---
 
+## Performance
+
+Measured with PostgreSQL 15, Prisma 6, 500 rows, 300 iterations on Apple Silicon:
+
+| Scenario | Avg | P50 | P95 | P99 |
+|----------|-----|-----|-----|-----|
+| findMany — no extension (500 rows) | 3.11ms | 2.43ms | 5.78ms | 11.40ms |
+| **findMany — with soft-delete filter** (250 rows) | **2.01ms** | **1.61ms** | **4.44ms** | **7.48ms** |
+| delete — hard delete (baseline) | 0.53ms | 0.52ms | 0.68ms | 0.77ms |
+| **delete — soft delete** | **0.54ms** | **0.53ms** | **0.69ms** | **0.77ms** |
+| **cascade (User → 3 Posts → 6 Comments)** | **0.56ms** | **0.56ms** | **0.72ms** | **0.76ms** |
+
+Filter overhead: **-35%** (faster — fewer rows returned). Soft delete vs hard delete: **identical**.
+
+> Reproduce: `docker compose up -d && npm run bench`
+
 ## API Reference
 
 ### `@nestarc/soft-delete`
