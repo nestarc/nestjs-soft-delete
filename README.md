@@ -1,8 +1,12 @@
 # @nestarc/soft-delete
 
-Prisma soft-delete extension for NestJS. Automatically intercepts delete operations, filters deleted records from queries, and supports cascade soft-delete, restore, purge, events, and more.
+[![npm version](https://img.shields.io/npm/v/@nestarc/soft-delete.svg)](https://www.npmjs.com/package/@nestarc/soft-delete)
+[![npm downloads](https://img.shields.io/npm/dm/@nestarc/soft-delete.svg)](https://www.npmjs.com/package/@nestarc/soft-delete)
+[![CI](https://github.com/nestarc/nestjs-soft-delete/actions/workflows/ci.yml/badge.svg)](https://github.com/nestarc/nestjs-soft-delete/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-nestarc.dev-blue.svg)](https://nestarc.dev/packages/soft-delete/)
 
-[![npm](https://img.shields.io/npm/v/@nestarc/soft-delete.svg)](https://www.npmjs.com/package/@nestarc/soft-delete)
+Prisma soft-delete extension for NestJS. Automatically intercepts delete operations, filters deleted records from queries, and supports cascade soft-delete, restore, purge, events, and more.
 [![license](https://img.shields.io/npm/l/@nestarc/soft-delete.svg)](https://github.com/nestarc/nestjs-soft-delete/blob/main/LICENSE)
 
 ---
