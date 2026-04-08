@@ -107,6 +107,12 @@ describe('CascadeHandler', () => {
       );
     });
 
+    it('should throw CascadeRelationNotFoundError when child model does not exist in dmmf', () => {
+      expect(() => handler.findForeignKey('User', 'NonExistentModel')).toThrow(
+        CascadeRelationNotFoundError,
+      );
+    });
+
     it('should cache FK lookups', () => {
       // Call twice and verify same result (cache hit)
       const first = handler.findForeignKey('User', 'Post');

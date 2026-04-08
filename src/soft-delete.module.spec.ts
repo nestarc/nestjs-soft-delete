@@ -227,5 +227,87 @@ describe('SoftDeleteModule', () => {
       const moduleInstance = new SoftDeleteModule();
       expect(typeof moduleInstance.configure).toBe('function');
     });
+
+    it('should apply middleware via consumer', () => {
+      const moduleInstance = new SoftDeleteModule();
+      const mockApply = { forRoutes: vi.fn() };
+      const mockConsumer = { apply: vi.fn().mockReturnValue(mockApply) };
+      moduleInstance.configure(mockConsumer as any);
+      expect(mockConsumer.apply).toHaveBeenCalled();
+      expect(mockApply.forRoutes).toHaveBeenCalledWith('*');
+    });
+  });
+
+  describe('buildCascadeHandlerProvider', () => {
+    it('should return null when no cascade config', () => {
+      const dynamicModule = SoftDeleteModule.forRoot(options);
+      const cascadeProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === CascadeHandler,
+      ) as any;
+
+      expect(cascadeProvider).toBeDefined();
+      const result = cascadeProvider.useFactory({ ...options });
+      expect(result).toBeNull();
+    });
+
+    it('should return null when cascade is empty object', () => {
+      const dynamicModule = SoftDeleteModule.forRoot({ ...options, cascade: {} });
+      const cascadeProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === CascadeHandler,
+      ) as any;
+
+      const result = cascadeProvider.useFactory({ ...options, cascade: {} });
+      expect(result).toBeNull();
+    });
+
+    it('should return CascadeHandler when cascade is configured', () => {
+      const cascadeOptions = { ...options, cascade: { User: ['Post'] } };
+      const dynamicModule = SoftDeleteModule.forRoot(cascadeOptions);
+      const cascadeProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === CascadeHandler,
+      ) as any;
+
+      const result = cascadeProvider.useFactory(cascadeOptions);
+      expect(result).toBeInstanceOf(CascadeHandler);
+    });
+  });
+
+  describe('buildEventEmitterProvider (forRootAsync)', () => {
+    it('should return null when enableEvents is false', () => {
+      const dynamicModule = SoftDeleteModule.forRootAsync({
+        useFactory: () => ({ ...options, enableEvents: false }),
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
+      });
+
+      const eventEmitterProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === SoftDeleteEventEmitter,
+      ) as any;
+
+      expect(eventEmitterProvider).toBeDefined();
+      const result = eventEmitterProvider.useFactory(
+        { ...options, enableEvents: false },
+        null,
+      );
+      expect(result).toBeNull();
+    });
+
+    it('should return SoftDeleteEventEmitter when enableEvents is true', () => {
+      const dynamicModule = SoftDeleteModule.forRootAsync({
+        useFactory: () => ({ ...options, enableEvents: true }),
+        prismaServiceToken: MOCK_PRISMA_TOKEN,
+      });
+
+      const eventEmitterProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === SoftDeleteEventEmitter,
+      ) as any;
+
+      expect(eventEmitterProvider).toBeDefined();
+      const mockEventEmitter2 = { emit: vi.fn() };
+      const result = eventEmitterProvider.useFactory(
+        { ...options, enableEvents: true },
+        mockEventEmitter2,
+      );
+      expect(result).toBeInstanceOf(SoftDeleteEventEmitter);
+    });
   });
 });
