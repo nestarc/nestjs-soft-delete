@@ -73,5 +73,18 @@
   "files": [
     "dist"
   ],
+  "keywords": [
+    "nestjs",
+    "soft-delete",
+    "soft-deletion",
+    "prisma",
+    "prisma-extension",
+    "cascade-delete",
+    "restore",
+    "deleted-at",
+    "paranoid",
+    "nestjs-module",
+    "saas"
+  ],
   "license": "MIT"
 }
