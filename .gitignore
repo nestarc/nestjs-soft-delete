@@ -28,3 +28,4 @@ test/generated/
 
 # TypeScript build info
 .tsbuildinfo
+coverage/
