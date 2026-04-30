@@ -191,7 +191,7 @@ All options for `SoftDeleteModule.forRoot()`:
 | `actorExtractor` | `(req: any) => string \| null` | `undefined` | Function to extract the actor ID from the incoming request. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map (see Cascade section). |
 | `maxCascadeDepth` | `number` | `3` | Maximum depth for recursive cascade operations. |
-| `dmmf` | `PrismaDmmfLike` | `Prisma.dmmf` when available | Explicit Prisma DMMF metadata for cascade relation lookup. Required for cascade when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
+| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata for cascade relation lookup. When omitted, cascade falls back to `Prisma.dmmf` if available; pass this explicitly when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
 | `prismaServiceToken` | `any` | — | **Required.** DI token of your `PrismaService`. |
 | `enableEvents` | `boolean` | `false` | Emit lifecycle events. Requires `@nestjs/event-emitter`. |
 
@@ -493,7 +493,6 @@ const prisma = new PrismaClient().$extends(
       Post: ['Comment'],
     },
     maxCascadeDepth: 3,
-    dmmf,
   }),
 );
 
@@ -504,6 +503,8 @@ await prisma.user.delete({ where: { id: 1 } });
 const activeUsers = await prisma.user.findMany();
 ```
 
+For Prisma 7 cascade, pass explicit `dmmf` as shown in the Prisma 7 cascade metadata section.
+
 ### `SoftDeleteExtensionOptions`
 
 | Option | Type | Default | Description |
@@ -513,7 +514,7 @@ const activeUsers = await prisma.user.findMany();
 | `deletedByField` | `string \| null` | `null` | Field to store actor ID. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map. |
 | `maxCascadeDepth` | `number` | `3` | Maximum cascade depth. |
-| `dmmf` | `PrismaDmmfLike` | `Prisma.dmmf` when available | Explicit Prisma DMMF metadata for cascade relation lookup. Required for cascade when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
+| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata for cascade relation lookup. When omitted, cascade falls back to `Prisma.dmmf` if available; pass this explicitly when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
 | `eventEmitter` | `{ emitSoftDeleted: (event) => void } \| null` | `null` | Optional custom event emitter. |
 
 ---
