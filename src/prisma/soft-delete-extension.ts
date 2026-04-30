@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { CascadeHandler } from './cascade-handler';
-import { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
+import { isCascadeConfigured, requireCascadeDmmf } from './dmmf-resolver';
+import type { PrismaDmmfLike, SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import { DEFAULT_DELETED_AT_FIELD, DEFAULT_MAX_CASCADE_DEPTH } from '../soft-delete.constants';
 import { SoftDeletedEvent } from '../events/soft-delete.events';
@@ -127,7 +128,7 @@ export interface SoftDeleteQueryHandlers {
  */
 export function _buildSoftDeleteQueryHandlers(
   options: SoftDeleteExtensionOptions,
-  dmmf?: any,
+  dmmf?: PrismaDmmfLike,
 ): SoftDeleteQueryHandlers {
   const deletedAtField = options.deletedAtField ?? DEFAULT_DELETED_AT_FIELD;
   const deletedByField = options.deletedByField ?? null;
@@ -135,13 +136,18 @@ export function _buildSoftDeleteQueryHandlers(
   const getEventEmitter = () => options.eventEmitter ?? getRegisteredSoftDeleteEventEmitter();
 
   let cascadeHandler: CascadeHandler | null = null;
-  if (options.cascade && Object.keys(options.cascade).length > 0 && dmmf) {
+  if (isCascadeConfigured(options.cascade)) {
+    const cascadeDmmf = requireCascadeDmmf({
+      optionsDmmf: options.dmmf,
+      fallbackDmmf: dmmf,
+    });
+
     cascadeHandler = new CascadeHandler({
-      cascade: options.cascade,
+      cascade: options.cascade!,
       deletedAtField,
       deletedByField,
       maxCascadeDepth: options.maxCascadeDepth ?? DEFAULT_MAX_CASCADE_DEPTH,
-      dmmf,
+      dmmf: cascadeDmmf,
     });
   }
 

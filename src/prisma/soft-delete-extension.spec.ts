@@ -650,6 +650,32 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       },
     };
 
+    const optionsPriorityDmmf = {
+      datamodel: {
+        models: [
+          {
+            name: 'User',
+            fields: [{ name: 'id', kind: 'scalar', type: 'String', isId: true }],
+          },
+          {
+            name: 'Post',
+            fields: [
+              { name: 'id', kind: 'scalar', type: 'String', isId: true },
+              { name: 'ownerId', kind: 'scalar', type: 'String' },
+              {
+                name: 'owner',
+                kind: 'object',
+                type: 'User',
+                relationName: 'UserOwnedPosts',
+                relationFromFields: ['ownerId'],
+                relationToFields: ['id'],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
     const cascadeOptions: SoftDeleteExtensionOptions = {
       softDeleteModels: ['User', 'Post'],
       cascade: { User: ['Post'] },
@@ -743,23 +769,57 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       expect(client.post.findMany).not.toHaveBeenCalled();
     });
 
-    it('should NOT trigger cascade when dmmf is not provided', async () => {
-      // cascade is configured but no dmmf is passed
-      const handlersNoDmmf = _buildSoftDeleteQueryHandlers(cascadeOptions);
+    it('should prefer options.dmmf over the internal fallback dmmf', async () => {
+      const cascadeHandlers = _buildSoftDeleteQueryHandlers(
+        {
+          ...cascadeOptions,
+          dmmf: optionsPriorityDmmf,
+        },
+        cascadeDmmf,
+      );
       const client = createCascadeMockClient();
       const query = createMockQuery();
 
-      await handlersNoDmmf.delete({
+      await cascadeHandlers.delete({
         model: 'User',
         args: { where: { id: 'user-1' } },
         query,
         client,
       });
 
-      // Should have called update on user
-      expect(client.user.update).toHaveBeenCalledTimes(1);
-      // Should NOT have cascaded to posts (no dmmf)
-      expect(client.post.updateMany).not.toHaveBeenCalled();
+      expect(client.post.updateMany).toHaveBeenCalledWith({
+        where: {
+          ownerId: 'user-1',
+          deletedAt: null,
+        },
+        data: {
+          deletedAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('should throw CascadeDmmfMissingError when cascade is configured and Prisma.dmmf is unavailable', async () => {
+      vi.resetModules();
+      vi.doMock('@prisma/client', () => ({
+        Prisma: {
+          defineExtension: vi.fn((extensionFactory: any) => extensionFactory),
+        },
+      }));
+
+      try {
+        const { _buildSoftDeleteQueryHandlers } = await import('./soft-delete-extension');
+        const { CascadeDmmfMissingError } = await import('../errors/cascade-dmmf-missing.error');
+
+        expect(() =>
+          _buildSoftDeleteQueryHandlers({
+            softDeleteModels: ['User', 'Post'],
+            cascade: { User: ['Post'] },
+          }),
+        ).toThrow(CascadeDmmfMissingError);
+      } finally {
+        vi.doUnmock('@prisma/client');
+        vi.resetModules();
+      }
     });
 
     it('should find records with deletedAt null filter before deleteMany cascade', async () => {
