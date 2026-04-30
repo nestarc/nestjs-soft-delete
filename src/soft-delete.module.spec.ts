@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { SoftDeleteModule } from './soft-delete.module';
 import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from './soft-delete.constants';
@@ -15,6 +15,30 @@ describe('SoftDeleteModule', () => {
     softDeleteModels: ['User', 'Post'],
     deletedAtField: 'deletedAt',
     prismaServiceToken: MOCK_PRISMA_TOKEN,
+  };
+
+  const cascadeDmmf = {
+    datamodel: {
+      models: [
+        {
+          name: 'User',
+          fields: [{ name: 'id', kind: 'scalar', type: 'String', isId: true }],
+        },
+        {
+          name: 'Post',
+          fields: [
+            { name: 'id', kind: 'scalar', type: 'String', isId: true },
+            { name: 'ownerId', kind: 'scalar', type: 'String' },
+            {
+              name: 'owner',
+              kind: 'object',
+              type: 'User',
+              relationFromFields: ['ownerId'],
+            },
+          ],
+        },
+      ],
+    },
   };
 
   describe('forRoot()', () => {
@@ -260,15 +284,48 @@ describe('SoftDeleteModule', () => {
       expect(result).toBeNull();
     });
 
-    it('should return CascadeHandler when cascade is configured', () => {
-      const cascadeOptions = { ...options, cascade: { User: ['Post'] } };
+    it('should return CascadeHandler when cascade is configured with explicit dmmf', () => {
+      const cascadeOptions = {
+        ...options,
+        cascade: { User: ['Post'] },
+        dmmf: cascadeDmmf,
+      };
       const dynamicModule = SoftDeleteModule.forRoot(cascadeOptions);
       const cascadeProvider = dynamicModule.providers?.find(
         (p: any) => p.provide === CascadeHandler,
       ) as any;
 
       const result = cascadeProvider.useFactory(cascadeOptions);
+
       expect(result).toBeInstanceOf(CascadeHandler);
+      expect(result.findForeignKey('User', 'Post')).toBe('ownerId');
+    });
+
+    it('should throw CascadeDmmfMissingError when cascade is configured and Prisma.dmmf is unavailable', async () => {
+      vi.resetModules();
+      vi.doMock('@prisma/client', () => ({
+        Prisma: {},
+      }));
+
+      try {
+        const { SoftDeleteModule } = await import('./soft-delete.module');
+        const { CascadeHandler } = await import('./prisma/cascade-handler');
+        const { CascadeDmmfMissingError } = await import('./errors/cascade-dmmf-missing.error');
+
+        const cascadeOptions = {
+          ...options,
+          cascade: { User: ['Post'] },
+        };
+        const dynamicModule = SoftDeleteModule.forRoot(cascadeOptions);
+        const cascadeProvider = dynamicModule.providers?.find(
+          (p: any) => p.provide === CascadeHandler,
+        ) as any;
+
+        expect(() => cascadeProvider.useFactory(cascadeOptions)).toThrow(CascadeDmmfMissingError);
+      } finally {
+        vi.doUnmock('@prisma/client');
+        vi.resetModules();
+      }
     });
   });
 
