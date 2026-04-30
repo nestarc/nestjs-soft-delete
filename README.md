@@ -282,16 +282,21 @@ import { getDMMF } from '@prisma/internals';
 import { SoftDeleteModule } from '@nestarc/soft-delete';
 import { PrismaService } from './prisma.service';
 
-const datamodel = readFileSync('prisma/schema.prisma', 'utf8');
-const dmmf = await getDMMF({ datamodel });
-
-SoftDeleteModule.forRoot({
-  softDeleteModels: ['User', 'Post'],
-  cascade: {
-    User: ['Post'],
-  },
-  dmmf,
+SoftDeleteModule.forRootAsync({
   prismaServiceToken: PrismaService,
+  useFactory: async () => {
+    const datamodel = readFileSync('prisma/schema.prisma', 'utf8');
+    const dmmf = await getDMMF({ datamodel });
+
+    return {
+      softDeleteModels: ['User', 'Post'],
+      cascade: {
+        User: ['Post'],
+      },
+      dmmf,
+      prismaServiceToken: PrismaService,
+    };
+  },
 });
 ```
 
