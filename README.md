@@ -508,7 +508,31 @@ await prisma.user.delete({ where: { id: 1 } });
 const activeUsers = await prisma.user.findMany();
 ```
 
-For Prisma 7 cascade, pass explicit `dmmf` as shown in the Prisma 7 cascade metadata section.
+For Prisma 7 standalone cascade, generate DMMF first and pass it into the extension:
+
+```typescript
+import { readFileSync } from 'node:fs';
+import { PrismaClient } from '@prisma/client';
+import { getDMMF } from '@prisma/internals';
+import { createPrismaSoftDeleteExtension } from '@nestarc/soft-delete';
+
+async function main() {
+  const datamodel = readFileSync('prisma/schema.prisma', 'utf8');
+  const dmmf = await getDMMF({ datamodel });
+
+  const prisma = new PrismaClient().$extends(
+    createPrismaSoftDeleteExtension({
+      softDeleteModels: ['User', 'Post'],
+      cascade: { User: ['Post'] },
+      dmmf,
+    }),
+  );
+
+  await prisma.user.delete({ where: { id: 1 } });
+}
+
+void main();
+```
 
 ### `SoftDeleteExtensionOptions`
 

@@ -115,6 +115,8 @@ describe('requireCascadeDmmf', () => {
   });
 
   it('should throw CascadeDmmfMissingError when no dmmf is available', () => {
+    clearStaticPrismaDmmf();
+
     expect(() =>
       requireCascadeDmmf({
         optionsDmmf: undefined,
