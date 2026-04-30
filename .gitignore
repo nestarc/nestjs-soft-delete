@@ -29,3 +29,6 @@ test/generated/
 # TypeScript build info
 .tsbuildinfo
 coverage/
+
+# Local git worktrees
+.worktrees/
