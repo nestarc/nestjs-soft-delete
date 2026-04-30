@@ -1,7 +1,32 @@
-import { describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
+import { afterEach, describe, expect, it } from 'vitest';
 import { CascadeDmmfMissingError } from '../errors/cascade-dmmf-missing.error';
 import type { PrismaDmmfLike } from '../interfaces/soft-delete-options.interface';
 import { isCascadeConfigured, requireCascadeDmmf, resolveCascadeDmmf } from './dmmf-resolver';
+
+const prismaStatic = Prisma as typeof Prisma & { dmmf?: PrismaDmmfLike };
+const originalPrismaDmmfDescriptor = Object.getOwnPropertyDescriptor(prismaStatic, 'dmmf');
+
+function setStaticPrismaDmmf(dmmf: PrismaDmmfLike): void {
+  Object.defineProperty(prismaStatic, 'dmmf', {
+    configurable: true,
+    writable: true,
+    value: dmmf,
+  });
+}
+
+function clearStaticPrismaDmmf(): void {
+  Reflect.deleteProperty(prismaStatic, 'dmmf');
+}
+
+afterEach(() => {
+  if (originalPrismaDmmfDescriptor) {
+    Object.defineProperty(prismaStatic, 'dmmf', originalPrismaDmmfDescriptor);
+    return;
+  }
+
+  Reflect.deleteProperty(prismaStatic, 'dmmf');
+});
 
 const optionsDmmf: PrismaDmmfLike = {
   datamodel: {
@@ -67,10 +92,18 @@ describe('resolveCascadeDmmf', () => {
     expect(result).toBe(fallbackDmmf);
   });
 
-  it('should use Prisma static dmmf when explicit sources are absent', () => {
+  it('should use provided Prisma dmmf when explicit sources are absent', () => {
     const result = resolveCascadeDmmf({
       prismaDmmf,
     });
+
+    expect(result).toBe(prismaDmmf);
+  });
+
+  it('should use Prisma static dmmf when no explicit sources are provided', () => {
+    setStaticPrismaDmmf(prismaDmmf);
+
+    const result = resolveCascadeDmmf({});
 
     expect(result).toBe(prismaDmmf);
   });
@@ -89,5 +122,11 @@ describe('requireCascadeDmmf', () => {
         prismaDmmf: undefined,
       }),
     ).toThrow(CascadeDmmfMissingError);
+  });
+
+  it('should throw CascadeDmmfMissingError when static Prisma dmmf is absent', () => {
+    clearStaticPrismaDmmf();
+
+    expect(() => requireCascadeDmmf({})).toThrow(CascadeDmmfMissingError);
   });
 });
