@@ -4,6 +4,17 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `dmmf` option for `SoftDeleteModuleOptions` and `SoftDeleteExtensionOptions`, enabling explicit cascade metadata injection for Prisma versions that do not expose `Prisma.dmmf`.
+- `CascadeDmmfMissingError`, thrown when cascade is configured but DMMF metadata is unavailable.
+
+### Fixed
+
+- Cascade setup now fails early with a clear DMMF configuration error instead of silently disabling cascade when metadata is missing.
+
 ## [0.2.0] - 2026-04-05
 
 ### Added

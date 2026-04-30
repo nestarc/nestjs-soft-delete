@@ -191,6 +191,7 @@ All options for `SoftDeleteModule.forRoot()`:
 | `actorExtractor` | `(req: any) => string \| null` | `undefined` | Function to extract the actor ID from the incoming request. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map (see Cascade section). |
 | `maxCascadeDepth` | `number` | `3` | Maximum depth for recursive cascade operations. |
+| `dmmf` | `PrismaDmmfLike` | `Prisma.dmmf` when available | Explicit Prisma DMMF metadata for cascade relation lookup. Required for cascade when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
 | `prismaServiceToken` | `any` | — | **Required.** DI token of your `PrismaService`. |
 | `enableEvents` | `boolean` | `false` | Emit lifecycle events. Requires `@nestjs/event-emitter`. |
 
@@ -270,6 +271,31 @@ SoftDeleteModule.forRoot({
 ```
 
 When a `User` is soft-deleted, all their `Post` records are soft-deleted automatically, and each post's `Comment` records are soft-deleted as well. Restoring the `User` reverses the entire tree up to `maxCascadeDepth` levels deep.
+
+### Prisma 7 cascade metadata
+
+Cascade relation lookup requires Prisma DMMF metadata. Prisma 5 and 6 expose this through `Prisma.dmmf`, so no extra configuration is required in the default client setup. Prisma 7 does not expose `Prisma.dmmf` in the same way, so pass DMMF explicitly when using cascade:
+
+```typescript
+import { readFileSync } from 'node:fs';
+import { getDMMF } from '@prisma/internals';
+import { SoftDeleteModule } from '@nestarc/soft-delete';
+import { PrismaService } from './prisma.service';
+
+const datamodel = readFileSync('prisma/schema.prisma', 'utf8');
+const dmmf = await getDMMF({ datamodel });
+
+SoftDeleteModule.forRoot({
+  softDeleteModels: ['User', 'Post'],
+  cascade: {
+    User: ['Post'],
+  },
+  dmmf,
+  prismaServiceToken: PrismaService,
+});
+```
+
+`@nestarc/soft-delete` does not depend on `@prisma/internals`; install and use it in your application only if you choose this DMMF generation approach. Prisma 7 support is limited to this explicit DMMF path until the package is fully tested against Prisma 7 and peer dependencies are updated.
 
 ---
 
@@ -467,6 +493,7 @@ const prisma = new PrismaClient().$extends(
       Post: ['Comment'],
     },
     maxCascadeDepth: 3,
+    dmmf,
   }),
 );
 
@@ -486,6 +513,7 @@ const activeUsers = await prisma.user.findMany();
 | `deletedByField` | `string \| null` | `null` | Field to store actor ID. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map. |
 | `maxCascadeDepth` | `number` | `3` | Maximum cascade depth. |
+| `dmmf` | `PrismaDmmfLike` | `Prisma.dmmf` when available | Explicit Prisma DMMF metadata for cascade relation lookup. Required for cascade when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
 | `eventEmitter` | `{ emitSoftDeleted: (event) => void } \| null` | `null` | Optional custom event emitter. |
 
 ---
@@ -526,9 +554,11 @@ Filter overhead: **-35%** (faster — fewer rows returned). Soft delete vs hard 
 | `SoftDeleteEventEmitter` | Service | Internal emitter; exposed for advanced use. |
 | `SoftDeleteFieldMissingError` | Error | Thrown when `deletedAt` field is missing from the model. |
 | `CascadeRelationNotFoundError` | Error | Thrown when a cascade relation cannot be resolved. |
+| `CascadeDmmfMissingError` | Error | Thrown when cascade is configured but no Prisma DMMF metadata is available. |
 | `SoftDeleteModuleOptions` | Interface | Options for `forRoot()`. |
 | `SoftDeleteModuleAsyncOptions` | Interface | Options for `forRootAsync()`. |
 | `SoftDeleteExtensionOptions` | Interface | Options for `createPrismaSoftDeleteExtension()`. |
+| `PrismaDmmfLike` | Interface | Minimal DMMF shape accepted by the `dmmf` option. |
 
 ### `@nestarc/soft-delete/testing`
 
