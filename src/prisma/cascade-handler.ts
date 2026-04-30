@@ -1,3 +1,4 @@
+import type { PrismaDmmfLike } from '../interfaces/soft-delete-options.interface';
 import { CascadeRelationNotFoundError } from '../errors/cascade-relation-not-found.error';
 
 export interface CascadeHandlerOptions {
@@ -5,7 +6,7 @@ export interface CascadeHandlerOptions {
   deletedAtField: string;
   deletedByField?: string | null;
   maxCascadeDepth: number;
-  dmmf: any;
+  dmmf: PrismaDmmfLike;
 }
 
 /**
@@ -17,7 +18,7 @@ export class CascadeHandler {
   private readonly cascade: Record<string, string[]>;
   private readonly deletedAtField: string;
   private readonly maxCascadeDepth: number;
-  private readonly dmmf: any;
+  private readonly dmmf: PrismaDmmfLike;
   private readonly fkCache = new Map<string, string>();
 
   constructor(options: CascadeHandlerOptions) {

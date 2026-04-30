@@ -1,6 +1,11 @@
 // Core Module
 export { SoftDeleteModule } from './soft-delete.module';
-export type { SoftDeleteModuleOptions, SoftDeleteModuleAsyncOptions, SoftDeleteExtensionOptions } from './interfaces/soft-delete-options.interface';
+export type {
+  PrismaDmmfLike,
+  SoftDeleteModuleOptions,
+  SoftDeleteModuleAsyncOptions,
+  SoftDeleteExtensionOptions,
+} from './interfaces/soft-delete-options.interface';
 
 // Services
 export { SoftDeleteService } from './services/soft-delete.service';
@@ -21,6 +26,7 @@ export { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.i
 // Errors
 export { SoftDeleteFieldMissingError } from './errors/soft-delete-field-missing.error';
 export { CascadeRelationNotFoundError } from './errors/cascade-relation-not-found.error';
+export { CascadeDmmfMissingError } from './errors/cascade-dmmf-missing.error';
 
 // Events
 export { SoftDeletedEvent, RestoredEvent, PurgedEvent } from './events/soft-delete.events';
