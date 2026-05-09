@@ -6,8 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docs](https://img.shields.io/badge/docs-nestarc.dev-blue.svg)](https://nestarc.dev/packages/soft-delete/)
 
-> **The only NestJS-native soft-delete library with Prisma 7 support.**
-> Cascade, restore, purge, lifecycle events, route decorators, and actor tracking — designed for NestJS from the ground up, not bolted on.
+> **A NestJS-first soft-delete toolkit for Prisma.**
+> Adds cascade, restore, purge, lifecycle events, route decorators, and actor tracking around a Prisma client extension.
 
 [Quick Start](#quick-start) · [Why this library?](#why-nestarcsoft-delete) · [How It Works](#how-it-works) · [API Reference](#api-reference) · [Docs](https://nestarc.dev/packages/soft-delete/)
 
@@ -15,12 +15,12 @@
 
 ## Why @nestarc/soft-delete?
 
-Existing Prisma soft-delete libraries are framework-agnostic — they work, but they leave NestJS users to wire up request-scoped filter context, route decorators, and event handling by hand. `@nestarc/soft-delete` is designed for NestJS first:
+Many Prisma soft-delete libraries are framework-agnostic — they work, but they leave NestJS users to wire up request-scoped filter context, route decorators, and event handling by hand. `@nestarc/soft-delete` is designed for NestJS first:
 
 - **NestJS-native** — `forRoot()` / `forRootAsync()`, DI tokens, interceptors, middleware, and `@nestjs/event-emitter` integration out of the box
 - **Async-safe filter context** — `AsyncLocalStorage`-backed filter modes per request, automatically wired by route decorators
-- **Prisma 7 ready** — explicit DMMF injection path for cascade, no separate fork required
-- **Production-grade safety** — `maxCascadeDepth` guard, timestamp-matched cascade restore, typed errors, dual ESM/CJS
+- **Explicit DMMF injection** — configure cascade metadata when `Prisma.dmmf` is unavailable, including Prisma versions where it is no longer auto-exposed
+- **Safety guardrails** — `maxCascadeDepth` guard, timestamp-matched cascade restore, typed errors, dual ESM/CJS
 
 ### Comparison with alternatives
 
@@ -32,9 +32,9 @@ Existing Prisma soft-delete libraries are framework-agnostic — they work, but 
 | Lifecycle events (deleted / restored / purged) | ✅ | ❌ | ❌ |
 | `purge()` API for retention policies | ✅ | ❌ | ❌ |
 | Cascade soft-delete | ✅ | ✅ | ✅ |
-| Cascade restore (timestamp-matched) | ✅ | partial | ❌ |
+| Cascade restore (timestamp-matched) | ✅ | see project docs | see project docs |
 | Actor tracking (`deletedBy`) | ✅ | ✅ | ✅ |
-| Prisma 7 support | ✅ (DMMF inject) | ❌ (separate fork) | ❌ |
+| Explicit cascade DMMF override | ✅ | see project docs | see project docs |
 | Testing utilities | ✅ | ❌ | ❌ |
 | ESM + CJS dual build | ✅ | ✅ | ✅ |
 
@@ -66,7 +66,7 @@ If you do not use NestJS, `prisma-extension-soft-delete` is a great choice. If y
 
 ## Features
 
-- 🪶 **Zero-overhead soft-delete** — `delete` and `deleteMany` automatically become `update` / `updateMany` setting `deletedAt`
+- 🪶 **Prisma extension rewrite** — `delete` and `deleteMany` automatically become `update` / `updateMany` setting `deletedAt`
 - 🔍 **Transparent query filtering** — `findMany`, `findFirst`, `findUnique`, `count`, `aggregate`, `groupBy` exclude soft-deleted rows by default
 - 🌊 **Cascade soft-delete & restore** — across related models, with timestamp-matched restore semantics
 - ↩️ **Three deletion strategies** — `restore()`, `forceDelete()`, and `purge()` on `SoftDeleteService`
@@ -74,7 +74,7 @@ If you do not use NestJS, `prisma-extension-soft-delete` is a great choice. If y
 - 👤 **Actor tracking** — automatic `deletedBy` via `actorExtractor`
 - 📡 **Lifecycle events** — `SoftDeletedEvent`, `RestoredEvent`, `PurgedEvent` via `@nestjs/event-emitter`
 - 🧪 **Testing utilities** — `TestSoftDeleteModule`, `expectSoftDeleted`, `expectNotSoftDeleted`, `expectCascadeSoftDeleted`
-- ⚡ **Prisma 7 ready** — explicit DMMF injection for cascade
+- ⚡ **Explicit DMMF injection** — configure cascade metadata when Prisma does not expose `Prisma.dmmf`
 - 🔌 **Standalone usable** — `createPrismaSoftDeleteExtension()` works without NestJS
 - 🌐 **Global module** — register once, use everywhere
 
@@ -123,7 +123,7 @@ pnpm add @nestarc/soft-delete
 npm install @nestjs/common @nestjs/core @prisma/client reflect-metadata rxjs
 ```
 
-**Optional peer dependencies:**
+**Optional integrations:**
 
 ```bash
 # For lifecycle events
@@ -272,7 +272,7 @@ All options for `SoftDeleteModule.forRoot()`:
 | `actorExtractor` | `(req: any) => string \| null` | `undefined` | Function to extract the actor ID from the incoming request. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map (see Cascade section). |
 | `maxCascadeDepth` | `number` | `3` | Maximum depth for recursive cascade operations. |
-| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata for cascade relation lookup. When omitted, cascade falls back to `Prisma.dmmf` if available; pass this explicitly when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
+| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata for cascade relation lookup. When omitted, cascade falls back to `Prisma.dmmf` if available; pass this explicitly when your Prisma version does not expose `Prisma.dmmf`. |
 | `prismaServiceToken` | `any` | — | **Required.** DI token of your `PrismaService`. |
 | `enableEvents` | `boolean` | `false` | Emit lifecycle events. Requires `@nestjs/event-emitter`. |
 
@@ -351,7 +351,7 @@ SoftDeleteModule.forRoot({
 });
 ```
 
-When a `User` is soft-deleted, all their `Post` records are soft-deleted automatically, and each post's `Comment` records are soft-deleted as well. Restoring the `User` reverses the entire tree up to `maxCascadeDepth` levels deep.
+When a `User` is soft-deleted, matching non-deleted `Post` records are soft-deleted automatically, and each affected post's matching `Comment` records are soft-deleted as well. Restoring the `User` restores timestamp-matched cascade records up to `maxCascadeDepth` levels deep.
 
 ### Prisma 7 cascade metadata
 
@@ -381,7 +381,7 @@ SoftDeleteModule.forRootAsync({
 });
 ```
 
-`@nestarc/soft-delete` does not depend on `@prisma/internals`; install and use it in your application only if you choose this DMMF generation approach. Prisma 7 support is limited to this explicit DMMF path until the package is fully tested against Prisma 7 and peer dependencies are updated.
+`@nestarc/soft-delete` does not depend on `@prisma/internals`; install and use it in your application only if you choose this DMMF generation approach. Prisma versions outside the published peer dependency range should be treated as explicit-DMMF usage until the package is tested against them and the peer dependencies are updated.
 
 ---
 
@@ -545,19 +545,17 @@ describe('UsersService', () => {
 
 ## Unique Constraint Strategy
 
-Standard `@unique` constraints break when multiple soft-deleted rows share the same value (e.g. two deleted users with the same email). Use a composite unique constraint that includes `deletedAt`:
+Standard `@unique` constraints continue to count soft-deleted rows, so reusing a value such as an email can fail after soft-delete. There is no fully portable Prisma-schema-only solution for "unique among active rows"; use a database-specific unique index for the active subset.
 
-```prisma
-model User {
-  id        Int       @id @default(autoincrement())
-  email     String
-  deletedAt DateTime?
+For PostgreSQL, add a partial unique index in a migration:
 
-  @@unique([email, deletedAt])
-}
+```sql
+CREATE UNIQUE INDEX users_email_active_unique
+  ON "User" ("email")
+  WHERE "deletedAt" IS NULL;
 ```
 
-This allows multiple soft-deleted rows with the same email while still enforcing uniqueness among active records (where `deletedAt IS NULL`). Note that this works in most databases because `NULL` values are treated as distinct in unique indexes. Verify this behaviour for your specific database engine.
+For SQLite, use the same partial-index idea with your actual table and column names. For MySQL, use a generated column or functional index strategy that only has a value for active rows. Avoid relying on `@@unique([email, deletedAt])`: in databases where `NULL` values are treated as distinct, that composite index can allow multiple active rows with the same email because active rows all have `deletedAt = NULL`.
 
 ---
 
@@ -624,7 +622,7 @@ void main();
 | `deletedByField` | `string \| null` | `null` | Field to store actor ID. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map. |
 | `maxCascadeDepth` | `number` | `3` | Maximum cascade depth. |
-| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata for cascade relation lookup. When omitted, cascade falls back to `Prisma.dmmf` if available; pass this explicitly when Prisma does not expose `Prisma.dmmf`, including Prisma 7. |
+| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata for cascade relation lookup. When omitted, cascade falls back to `Prisma.dmmf` if available; pass this explicitly when your Prisma version does not expose `Prisma.dmmf`. |
 | `eventEmitter` | `{ emitSoftDeleted: (event) => void } \| null` | `null` | Optional custom event emitter. |
 
 ---
@@ -641,7 +639,7 @@ Measured with PostgreSQL 15, Prisma 6, 500 rows, 300 iterations on Apple Silicon
 | **delete — soft delete** | **0.54ms** | **0.53ms** | **0.69ms** | **0.77ms** |
 | **cascade (User → 3 Posts → 6 Comments)** | **0.56ms** | **0.56ms** | **0.72ms** | **0.76ms** |
 
-Filter overhead: **-35%** (faster — fewer rows returned). Soft delete vs hard delete: **identical**.
+In this benchmark, the filtered `findMany` returned 250 rows while the baseline returned 500 rows, so the lower latency reflects less data returned rather than negative extension overhead. Soft delete and hard delete timings were close in this small benchmark; measure in your own schema and workload before using these numbers for capacity planning.
 
 > Reproduce: `docker compose up -d && npm run bench`
 
@@ -699,25 +697,13 @@ await this.softDelete.purge('Post', { olderThan: thirtyDaysAgo });
 <details>
 <summary><b>Unique constraints fail when I reuse an email after soft-deleting a user.</b></summary>
 
-This is expected — a plain `@unique` constraint counts soft-deleted rows. Use a composite unique index with `deletedAt` so multiple soft-deleted rows can share the same value:
-
-```prisma
-model User {
-  id        Int       @id @default(autoincrement())
-  email     String
-  deletedAt DateTime?
-
-  @@unique([email, deletedAt])
-}
-```
-
-Most databases (PostgreSQL, MySQL, SQLite) treat `NULL` values as distinct in unique indexes, so only one active row per email is allowed while soft-deleted rows are unrestricted. See [Unique Constraint Strategy](#unique-constraint-strategy).
+This is expected — a plain `@unique` constraint counts soft-deleted rows. Use a database-specific active-row unique index instead of `@@unique([email, deletedAt])`; see [Unique Constraint Strategy](#unique-constraint-strategy).
 </details>
 
 <details>
 <summary><b>How does this work with Prisma 7?</b></summary>
 
-The extension itself runs on Prisma 5, 6, and 7. The only Prisma 7 caveat is that `Prisma.dmmf` is no longer auto-exposed, so cascade requires you to pass DMMF explicitly:
+The published peer dependency range currently covers Prisma 5 and 6. The `dmmf` option exists so cascade metadata can be supplied explicitly when `Prisma.dmmf` is unavailable, including Prisma versions where it is no longer auto-exposed. Prisma 7 usage should be treated as this explicit-DMMF path until the package is tested against Prisma 7 and the peer range is updated:
 
 ```typescript
 import { readFileSync } from 'node:fs';
@@ -742,7 +728,7 @@ This package does **not** depend on `@prisma/internals` — install it only in y
 <details>
 <summary><b>Do soft-delete operations run inside Prisma transactions?</b></summary>
 
-Yes. Because the soft-delete logic runs as a Prisma client extension, every rewritten operation — including cascade `UPDATE`s — runs in the same transaction as your original call, including `prisma.$transaction(...)` blocks and interactive transactions.
+The extension uses Prisma operations on the same extended client, but standalone soft-delete plus cascade is implemented as multiple Prisma calls and this package does not create an explicit transaction around them. If you need atomic cascade behavior, wrap the relevant work in your own Prisma transaction and verify the behavior for your Prisma version and transaction style.
 </details>
 
 <details>
@@ -772,7 +758,7 @@ SoftDeleteModule.forRoot({
 });
 ```
 
-The same fields must exist on every model listed in `softDeleteModels`, otherwise you will get a `SoftDeleteFieldMissingError` at startup.
+The same fields must exist on every model listed in `softDeleteModels`. The package currently does not perform startup schema validation for this; a missing field will surface as a Prisma runtime error when the affected model is queried or updated.
 </details>
 
 <details>
@@ -813,7 +799,7 @@ await this.softDelete.onlyDeleted(() => this.prisma.client.user.findMany());
 | `RestoredEvent` | Class | Event emitted after a restore. `EVENT_NAME = 'soft-delete.restored'`. |
 | `PurgedEvent` | Class | Event emitted after a purge. `EVENT_NAME = 'soft-delete.purged'`. |
 | `SoftDeleteEventEmitter` | Service | Internal emitter; exposed for advanced use. |
-| `SoftDeleteFieldMissingError` | Error | Thrown when `deletedAt` field is missing from the model. |
+| `SoftDeleteFieldMissingError` | Error | Exported error type reserved for missing soft-delete field validation. Current runtime paths surface missing fields as Prisma errors. |
 | `CascadeRelationNotFoundError` | Error | Thrown when a cascade relation cannot be resolved. |
 | `CascadeDmmfMissingError` | Error | Thrown when cascade is configured but no Prisma DMMF metadata is available. |
 | `SoftDeleteModuleOptions` | Interface | Options for `forRoot()`. |
