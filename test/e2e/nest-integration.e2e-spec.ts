@@ -39,6 +39,7 @@ import {
 import {
   cleanData,
   createBasePrisma,
+  createE2eProviderModule,
   createTables,
   dropTables,
 } from './setup-helpers';
@@ -50,6 +51,7 @@ const prismaDmmf = (Prisma as any).dmmf;
 class UsersController {
   constructor(
     @Inject(PRISMA_TOKEN) private readonly prisma: any,
+    @Inject(SoftDeleteService)
     private readonly softDelete: SoftDeleteService,
   ) {}
 
@@ -118,19 +120,28 @@ beforeAll(async () => {
   await createTables(basePrisma);
   prisma = extendClient(basePrisma);
 
+  const providerModule = createE2eProviderModule([
+    { provide: PRISMA_TOKEN, useFactory: () => prisma },
+  ]);
+
   module = await Test.createTestingModule({
     imports: [
-      SoftDeleteModule.forRoot({
-        softDeleteModels: ['User', 'Post', 'Comment'],
-        deletedAtField: 'deletedAt',
-        deletedByField: 'deletedBy',
-        // Pull actorId from a header — keeps the test pure HTTP without an auth stack
-        actorExtractor: (req: any) => (req.headers['x-actor-id'] as string) ?? null,
+      providerModule,
+      SoftDeleteModule.forRootAsync({
+        imports: [providerModule],
         prismaServiceToken: PRISMA_TOKEN,
+        useFactory: () => ({
+          softDeleteModels: ['User', 'Post', 'Comment'],
+          deletedAtField: 'deletedAt',
+          deletedByField: 'deletedBy',
+          // Pull actorId from a header so the test stays pure HTTP.
+          actorExtractor: (req: any) =>
+            (req.headers['x-actor-id'] as string) ?? null,
+          prismaServiceToken: PRISMA_TOKEN,
+        }),
       }),
       UsersModule,
     ],
-    providers: [{ provide: PRISMA_TOKEN, useValue: prisma }],
   }).compile();
 
   app = module.createNestApplication();

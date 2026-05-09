@@ -5,6 +5,7 @@
  * for all *.e2e-spec.ts files. Uses raw SQL so tests work without
  * running prisma migrate.
  */
+import type { DynamicModule, Provider } from '@nestjs/common';
 import { PrismaClient } from '../generated/client';
 
 export const DATABASE_URL =
@@ -71,4 +72,23 @@ export async function cleanData(prisma: PrismaClient): Promise<void> {
 
 export function createBasePrisma(): PrismaClient {
   return new PrismaClient({ datasourceUrl: DATABASE_URL });
+}
+
+class E2eProviderModule {}
+
+function providerToken(provider: Provider): unknown {
+  return typeof provider === 'function' ? provider : provider.provide;
+}
+
+export function createE2eProviderModule(
+  providers: Provider[],
+  imports: NonNullable<DynamicModule['imports']> = [],
+): DynamicModule {
+  return {
+    module: E2eProviderModule,
+    global: true,
+    imports,
+    providers,
+    exports: providers.map(providerToken),
+  };
 }

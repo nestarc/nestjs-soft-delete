@@ -19,6 +19,7 @@ import { SoftDeleteService } from '../../src/services/soft-delete.service';
 import {
   cleanData,
   createBasePrisma,
+  createE2eProviderModule,
   createTables,
   dropTables,
 } from './setup-helpers';
@@ -49,18 +50,26 @@ beforeAll(async () => {
   await createTables(basePrisma);
   prisma = extendClient(basePrisma);
 
+  const providerModule = createE2eProviderModule([
+    { provide: PRISMA_TOKEN, useFactory: () => prisma },
+  ]);
+
   module = await Test.createTestingModule({
     imports: [
-      SoftDeleteModule.forRoot({
-        softDeleteModels: ['User', 'Post', 'Comment'],
-        deletedAtField: 'deletedAt',
-        deletedByField: 'deletedBy',
-        cascade: { User: ['Post'], Post: ['Comment'] },
+      providerModule,
+      SoftDeleteModule.forRootAsync({
+        imports: [providerModule],
         prismaServiceToken: PRISMA_TOKEN,
-        dmmf: prismaDmmf,
+        useFactory: () => ({
+          softDeleteModels: ['User', 'Post', 'Comment'],
+          deletedAtField: 'deletedAt',
+          deletedByField: 'deletedBy',
+          cascade: { User: ['Post'], Post: ['Comment'] },
+          prismaServiceToken: PRISMA_TOKEN,
+          dmmf: prismaDmmf,
+        }),
       }),
     ],
-    providers: [{ provide: PRISMA_TOKEN, useValue: prisma }],
   }).compile();
 
   softDelete = module.get(SoftDeleteService);
@@ -222,6 +231,30 @@ describe('SoftDeleteService E2E', () => {
       expect(await rawDeletedAt('users', user.id)).toBeNull();
       expect(await rawDeletedAt('posts', post.id)).toBeNull();
       expect(await rawDeletedAt('comments', comment.id)).toBeNull();
+    });
+
+    it('does not cascade-restore children deleted outside the parent timestamp window', async () => {
+      const user = await prisma.user.create({
+        data: { email: 'window@test.com', name: 'Window' },
+      });
+      const post = await prisma.post.create({
+        data: { title: 'old deletion', authorId: user.id },
+      });
+
+      const oldDeletedAt = new Date(Date.now() - 60_000);
+      await basePrisma.$executeRawUnsafe(
+        `UPDATE posts SET deleted_at = $1 WHERE id = $2::uuid`,
+        oldDeletedAt,
+        post.id,
+      );
+
+      await prisma.user.delete({ where: { id: user.id } });
+      await softDelete.restore('User', { id: user.id });
+
+      expect(await rawDeletedAt('users', user.id)).toBeNull();
+      expect((await rawDeletedAt('posts', post.id))?.getTime()).toBe(
+        oldDeletedAt.getTime(),
+      );
     });
 
     it('throws when the record is not found', async () => {

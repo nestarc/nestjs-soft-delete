@@ -15,7 +15,7 @@ export class SoftDeleteService {
     @Inject(SOFT_DELETE_MODULE_OPTIONS) private readonly options: SoftDeleteModuleOptions,
     @Inject(SOFT_DELETE_PRISMA_SERVICE) private readonly prisma: any,
     @Optional() @Inject(CascadeHandler) private readonly cascadeHandler: CascadeHandler | null,
-    @Optional() private readonly eventEmitter: SoftDeleteEventEmitter | null,
+    @Optional() @Inject(SoftDeleteEventEmitter) private readonly eventEmitter: SoftDeleteEventEmitter | null,
   ) {
     this.deletedAtField = options.deletedAtField ?? 'deletedAt';
     this.deletedByField = options.deletedByField ?? null;
@@ -63,12 +63,20 @@ export class SoftDeleteService {
     const deletedAt = record[this.deletedAtField];
     if (this.cascadeHandler && deletedAt) {
       const pkField = this.cascadeHandler.findPrimaryKey(model);
-      await this.cascadeHandler.cascadeRestore(
-        this.prisma,
-        model,
-        record[pkField],
-        deletedAt,
-        0,
+      await SoftDeleteContext.run(
+        {
+          filterMode: 'withDeleted',
+          skipSoftDelete: false,
+          actorId: SoftDeleteContext.getActorId(),
+        },
+        () =>
+          this.cascadeHandler!.cascadeRestore(
+            this.prisma,
+            model,
+            record[pkField],
+            deletedAt,
+            0,
+          ),
       );
     }
 

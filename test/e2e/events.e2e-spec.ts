@@ -31,6 +31,7 @@ import { resetRegisteredSoftDeleteEventEmitter } from '../../src/events/soft-del
 import {
   cleanData,
   createBasePrisma,
+  createE2eProviderModule,
   createTables,
   dropTables,
 } from './setup-helpers';
@@ -58,25 +59,31 @@ function extendClient(client: PrismaClient) {
 
 async function buildModule(enableEvents: boolean): Promise<TestingModule> {
   resetRegisteredSoftDeleteEventEmitter();
+  const eventEmitterModule = EventEmitterModule.forRoot();
+  const providerModule = createE2eProviderModule(
+    [
+      { provide: PRISMA_TOKEN, useFactory: () => prisma },
+      { provide: 'EventEmitter2', useExisting: EventEmitter2 },
+    ],
+    [eventEmitterModule],
+  );
 
   return Test.createTestingModule({
     imports: [
-      EventEmitterModule.forRoot(),
-      SoftDeleteModule.forRoot({
-        softDeleteModels: ['User', 'Post', 'Comment'],
-        deletedAtField: 'deletedAt',
-        deletedByField: 'deletedBy',
-        cascade: { User: ['Post'], Post: ['Comment'] },
+      providerModule,
+      SoftDeleteModule.forRootAsync({
+        imports: [providerModule],
         prismaServiceToken: PRISMA_TOKEN,
-        enableEvents,
-        dmmf: prismaDmmf,
+        useFactory: () => ({
+          softDeleteModels: ['User', 'Post', 'Comment'],
+          deletedAtField: 'deletedAt',
+          deletedByField: 'deletedBy',
+          cascade: { User: ['Post'], Post: ['Comment'] },
+          prismaServiceToken: PRISMA_TOKEN,
+          enableEvents,
+          dmmf: prismaDmmf,
+        }),
       }),
-    ],
-    providers: [
-      { provide: PRISMA_TOKEN, useValue: prisma },
-      // SoftDeleteEventEmitter resolves @Inject('EventEmitter2') (string token);
-      // bridge it to the real EventEmitter2 instance from EventEmitterModule.
-      { provide: 'EventEmitter2', useExisting: EventEmitter2 },
     ],
   }).compile();
 }

@@ -209,5 +209,5 @@ describe('Cascade soft-delete E2E', () => {
 
 });
 
-// cascadeRestore (±1s window precision, deletedBy clearing, etc.) is covered
-// end-to-end via SoftDeleteService.restore() in purge.e2e-spec.ts.
+// cascadeRestore is covered end-to-end via SoftDeleteService.restore() in
+// purge.e2e-spec.ts, including the timestamp window boundary.
