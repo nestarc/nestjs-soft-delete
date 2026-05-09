@@ -4,6 +4,21 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-05-10
+
+### Added
+
+- PostgreSQL-backed E2E coverage for cascade soft-delete, cascade restore, purge, lifecycle events, and full NestJS HTTP integration.
+- Release workflow E2E gate so tagged npm publishes run the same PostgreSQL integration suite before publishing.
+- Cascade restore E2E coverage for children deleted outside the parent timestamp window.
+
+### Fixed
+
+- `SoftDeleteService.restore()` now runs cascade restore in a `withDeleted` context so nested soft-deleted descendants can be found and restored.
+- NestJS integration now uses explicit injection metadata for `SoftDeleteFilterInterceptor` and the optional `SoftDeleteEventEmitter`, improving reliability in build/test environments where reflected constructor metadata is not available.
+- E2E tests now run test files serially to avoid shared PostgreSQL table setup/teardown races.
+- NestJS E2E modules now provide Prisma and EventEmitter dependencies through imported provider modules, matching how `SoftDeleteModule.forRootAsync()` resolves providers.
+
 ## [0.3.0] - 2026-05-01
 
 ### Added

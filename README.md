@@ -541,6 +541,19 @@ describe('UsersService', () => {
 | `expectNotSoftDeleted(delegate, where, deletedAtField?)` | Asserts the record exists and `deletedAt` is null. |
 | `expectCascadeSoftDeleted(prisma, parentModel, where, childModels, deletedAtField?)` | Asserts the parent and all listed child models have soft-deleted records. |
 
+### Project validation
+
+The package test suite has two layers:
+
+```bash
+npm test
+npm run test:e2e
+```
+
+`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, and the full NestJS HTTP stack. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
+
+CI runs lint, unit tests, build, and PostgreSQL E2E tests. Tagged releases also run the PostgreSQL E2E suite before `npm publish`.
+
 ---
 
 ## Unique Constraint Strategy
