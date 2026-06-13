@@ -3,7 +3,13 @@ import { describe, it, expect } from 'vitest';
 import { WithDeleted } from './with-deleted.decorator';
 import { OnlyDeleted } from './only-deleted.decorator';
 import { SkipSoftDelete } from './skip-soft-delete.decorator';
-import { WITH_DELETED_KEY, ONLY_DELETED_KEY, SKIP_SOFT_DELETE_KEY } from '../soft-delete.constants';
+import { WithDeletedRelations } from './with-deleted-relations.decorator';
+import {
+  WITH_DELETED_KEY,
+  ONLY_DELETED_KEY,
+  SKIP_SOFT_DELETE_KEY,
+  WITH_DELETED_RELATIONS_KEY,
+} from '../soft-delete.constants';
 
 describe('Decorators', () => {
   describe('@WithDeleted()', () => {
@@ -39,6 +45,18 @@ describe('Decorators', () => {
 
       const metadata = Reflect.getMetadata(SKIP_SOFT_DELETE_KEY, TestController.prototype.handler);
       expect(metadata).toBe(true);
+    });
+  });
+
+  describe('@WithDeletedRelations()', () => {
+    it('should set exact relation path metadata', () => {
+      class TestController {
+        @WithDeletedRelations('posts', 'posts.comments')
+        handler() {}
+      }
+
+      const metadata = Reflect.getMetadata(WITH_DELETED_RELATIONS_KEY, TestController.prototype.handler);
+      expect(metadata).toEqual(['posts', 'posts.comments']);
     });
   });
 });

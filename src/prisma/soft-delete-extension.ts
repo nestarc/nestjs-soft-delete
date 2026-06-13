@@ -1,11 +1,17 @@
 import { Prisma } from '@prisma/client';
 import { CascadeHandler } from './cascade-handler';
 import { isCascadeConfigured, requireCascadeDmmf } from './dmmf-resolver';
-import type { PrismaDmmfLike, SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
+import { applyRelationReadFilters } from './relation-filter';
+import type {
+  PrismaDmmfLike,
+  RelationFilterOptions,
+  SoftDeleteExtensionOptions,
+} from '../interfaces/soft-delete-options.interface';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import { DEFAULT_DELETED_AT_FIELD, DEFAULT_MAX_CASCADE_DEPTH } from '../soft-delete.constants';
 import { SoftDeletedEvent } from '../events/soft-delete.events';
 import { getRegisteredSoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
+import { RelationDmmfMissingError } from '../errors/relation-dmmf-missing.error';
 
 /**
  * Determines whether a given model name is in the list of soft-delete models.
@@ -61,6 +67,30 @@ function applyReadFilter(
   }
 
   return { ...where, ...filter };
+}
+
+function applyActiveWriteFilter(
+  where: Record<string, unknown> | undefined,
+  deletedAtField: string,
+): Record<string, unknown> {
+  return { ...(where ?? {}), [deletedAtField]: null };
+}
+
+function resolveRelationFilterOptions(
+  relationFilters: boolean | RelationFilterOptions | undefined,
+): { enabled: boolean; maxDepth: number } {
+  if (relationFilters === true) {
+    return { enabled: true, maxDepth: 3 };
+  }
+
+  if (!relationFilters) {
+    return { enabled: false, maxDepth: 3 };
+  }
+
+  return {
+    enabled: relationFilters.enabled ?? true,
+    maxDepth: relationFilters.maxDepth ?? 3,
+  };
 }
 
 export interface SoftDeleteQueryHandlers {
@@ -134,6 +164,12 @@ export function _buildSoftDeleteQueryHandlers(
   const deletedByField = options.deletedByField ?? null;
   const softDeleteModels = options.softDeleteModels;
   const getEventEmitter = () => options.eventEmitter ?? getRegisteredSoftDeleteEventEmitter();
+  const relationFilterOptions = resolveRelationFilterOptions(options.relationFilters);
+  const relationFilterDmmf = options.dmmf ?? dmmf;
+
+  if (relationFilterOptions.enabled && !relationFilterDmmf) {
+    throw new RelationDmmfMissingError();
+  }
 
   let cascadeHandler: CascadeHandler | null = null;
   if (isCascadeConfigured(options.cascade)) {
@@ -167,7 +203,18 @@ export function _buildSoftDeleteQueryHandlers(
 
       const updatedArgs = { ...args };
       updatedArgs.where = applyReadFilter(updatedArgs.where, deletedAtField);
-      return query(updatedArgs);
+
+      const relationFilteredArgs =
+        relationFilterOptions.enabled && relationFilterDmmf
+          ? applyRelationReadFilters(updatedArgs, model, {
+              dmmf: relationFilterDmmf,
+              softDeleteModels,
+              deletedAtField,
+              maxDepth: relationFilterOptions.maxDepth,
+            })
+          : updatedArgs;
+
+      return query(relationFilteredArgs);
     };
   }
 
@@ -196,7 +243,7 @@ export function _buildSoftDeleteQueryHandlers(
       }
 
       getEventEmitter()?.emitSoftDeleted(
-        new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
+        new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId(), 1),
       );
 
       return result;
@@ -212,14 +259,15 @@ export function _buildSoftDeleteQueryHandlers(
 
       if (cascadeHandler) {
         const pkField = cascadeHandler.findPrimaryKey(model);
+        const activeWhere = applyActiveWriteFilter(args.where, deletedAtField);
         // Find records BEFORE soft-deleting them
         const toDelete = await (client as any)[modelKey].findMany({
-          where: { ...args.where, [deletedAtField]: null },
+          where: activeWhere,
           select: { [pkField]: true },
         });
 
         const result = await (client as any)[modelKey].updateMany({
-          where: args.where,
+          where: activeWhere,
           data,
         });
 
@@ -234,19 +282,31 @@ export function _buildSoftDeleteQueryHandlers(
         }
 
         getEventEmitter()?.emitSoftDeleted(
-          new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
+          new SoftDeletedEvent(
+            model,
+            args.where,
+            data[deletedAtField] as Date,
+            SoftDeleteContext.getActorId(),
+            typeof (result as any).count === 'number' ? (result as any).count : undefined,
+          ),
         );
 
         return result;
       }
 
       const result = await (client as any)[modelKey].updateMany({
-        where: args.where,
+        where: applyActiveWriteFilter(args.where, deletedAtField),
         data,
       });
 
       getEventEmitter()?.emitSoftDeleted(
-        new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId()),
+        new SoftDeletedEvent(
+          model,
+          args.where,
+          data[deletedAtField] as Date,
+          SoftDeleteContext.getActorId(),
+          typeof (result as any).count === 'number' ? (result as any).count : undefined,
+        ),
       );
 
       return result;

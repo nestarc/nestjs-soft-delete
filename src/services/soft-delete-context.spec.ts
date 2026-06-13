@@ -50,6 +50,24 @@ describe('SoftDeleteContext', () => {
     expect(SoftDeleteContext.getActorId()).toBeNull();
   });
 
+  it('should store and retrieve withDeleted relation paths', () => {
+    SoftDeleteContext.run(
+      {
+        filterMode: 'default',
+        skipSoftDelete: false,
+        withDeletedRelationPaths: ['posts', 'posts.comments'],
+      },
+      () => {
+        expect(SoftDeleteContext.getWithDeletedRelationPaths()).toEqual([
+          'posts',
+          'posts.comments',
+        ]);
+        expect(SoftDeleteContext.isWithDeletedRelationPath('posts')).toBe(true);
+        expect(SoftDeleteContext.isWithDeletedRelationPath('comments')).toBe(false);
+      },
+    );
+  });
+
   it('should isolate contexts between nested runs', () => {
     SoftDeleteContext.run(
       { filterMode: 'withDeleted', skipSoftDelete: false },

@@ -1,7 +1,12 @@
 import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
-import { WITH_DELETED_KEY, ONLY_DELETED_KEY, SKIP_SOFT_DELETE_KEY } from '../soft-delete.constants';
+import {
+  WITH_DELETED_KEY,
+  ONLY_DELETED_KEY,
+  SKIP_SOFT_DELETE_KEY,
+  WITH_DELETED_RELATIONS_KEY,
+} from '../soft-delete.constants';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import type { SoftDeleteFilterMode, SoftDeleteStore } from '../interfaces/soft-delete-context.interface';
 
@@ -15,6 +20,8 @@ export class SoftDeleteFilterInterceptor implements NestInterceptor {
     const withDeleted = this.reflector.getAllAndOverride<boolean>(WITH_DELETED_KEY, targets) ?? false;
     const onlyDeleted = this.reflector.getAllAndOverride<boolean>(ONLY_DELETED_KEY, targets) ?? false;
     const skipSoftDelete = this.reflector.getAllAndOverride<boolean>(SKIP_SOFT_DELETE_KEY, targets) ?? false;
+    const withDeletedRelationPaths =
+      this.reflector.getAllAndOverride<string[]>(WITH_DELETED_RELATIONS_KEY, targets) ?? [];
 
     let filterMode: SoftDeleteFilterMode = 'default';
     if (withDeleted) {
@@ -30,6 +37,7 @@ export class SoftDeleteFilterInterceptor implements NestInterceptor {
       filterMode,
       skipSoftDelete,
       actorId: currentActorId,
+      withDeletedRelationPaths,
     };
 
     return new Observable((subscriber) => {

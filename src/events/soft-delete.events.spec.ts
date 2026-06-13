@@ -18,6 +18,12 @@ describe('SoftDeletedEvent', () => {
     expect(event.actorId).toBeNull();
   });
 
+  it('should store optional affected count for bulk deletes', () => {
+    const event = new SoftDeletedEvent('User', { role: 'guest' }, new Date(), 'admin', 3);
+
+    expect(event.count).toBe(3);
+  });
+
   it('should have event name constant', () => {
     expect(SoftDeletedEvent.EVENT_NAME).toBe('soft-delete.deleted');
   });
@@ -36,6 +42,12 @@ describe('RestoredEvent', () => {
     const event = new RestoredEvent('User', { id: '1' });
 
     expect(event.actorId).toBeNull();
+  });
+
+  it('should store optional affected count for bulk restores', () => {
+    const event = new RestoredEvent('User', { role: 'guest' }, 'admin', 2);
+
+    expect(event.count).toBe(2);
   });
 
   it('should have event name constant', () => {

@@ -186,6 +186,7 @@ describe('Soft-delete events E2E', () => {
 
       expect(event.model).toBe('User');
       expect(event.where).toEqual({ name: { in: ['M1', 'M2'] } });
+      expect(event.count).toBe(2);
     });
   });
 
@@ -203,6 +204,22 @@ describe('Soft-delete events E2E', () => {
       expect(event).toBeInstanceOf(RestoredEvent);
       expect(event.model).toBe('User');
       expect(event.where).toEqual({ id: user.id });
+    });
+
+    it('emits count when SoftDeleteService.restoreMany() succeeds', async () => {
+      await prisma.user.create({ data: { email: 'rm1@test.com', name: 'RM' } });
+      await prisma.user.create({ data: { email: 'rm2@test.com', name: 'RM' } });
+      await prisma.user.deleteMany({ where: { name: 'RM' } });
+
+      const eventPromise = captureEvent<RestoredEvent>(RestoredEvent.EVENT_NAME);
+      const result = await softDelete.restoreMany('User', { where: { name: 'RM' } });
+      const event = await eventPromise;
+
+      expect(result.count).toBe(2);
+      expect(event).toBeInstanceOf(RestoredEvent);
+      expect(event.model).toBe('User');
+      expect(event.where).toEqual({ name: 'RM' });
+      expect(event.count).toBe(2);
     });
   });
 

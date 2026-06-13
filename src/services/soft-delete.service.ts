@@ -30,6 +30,23 @@ export class SoftDeleteService {
     return this.prisma[key];
   }
 
+  private buildRestoreData(): Record<string, any> {
+    const data: Record<string, any> = {
+      [this.deletedAtField]: null,
+    };
+    if (this.deletedByField) {
+      data[this.deletedByField] = null;
+    }
+    return data;
+  }
+
+  private buildDeletedWhere(where: Record<string, any> | undefined): Record<string, any> {
+    return {
+      ...(where ?? {}),
+      [this.deletedAtField]: { not: null },
+    };
+  }
+
   /**
    * Restore a soft-deleted record by setting deletedAt (and optionally deletedBy) back to null.
    * If cascade is configured, cascade-restores child records as well.
@@ -45,13 +62,7 @@ export class SoftDeleteService {
       throw new Error(`Record not found for model "${model}" with query ${JSON.stringify(where)}`);
     }
 
-    // Build the restore data payload
-    const data: Record<string, any> = {
-      [this.deletedAtField]: null,
-    };
-    if (this.deletedByField) {
-      data[this.deletedByField] = null;
-    }
+    const data = this.buildRestoreData();
 
     const delegate = this.getModelDelegate(model);
     const restored = await delegate.update({
@@ -83,6 +94,74 @@ export class SoftDeleteService {
     this.eventEmitter?.emitRestored(new RestoredEvent(model, where, SoftDeleteContext.getActorId()));
 
     return restored as T;
+  }
+
+  /**
+   * Restore all soft-deleted records matching the given filter.
+   * If cascade is configured, cascade-restores child records for each affected parent.
+   */
+  async restoreMany(
+    model: string,
+    options: { where?: Record<string, any> } = {},
+  ): Promise<{ count: number }> {
+    const delegate = this.getModelDelegate(model);
+    const where = options.where ?? {};
+    const deletedWhere = this.buildDeletedWhere(where);
+    const data = this.buildRestoreData();
+
+    let recordsToCascade: Array<Record<string, any>> = [];
+    let pkField = 'id';
+
+    if (this.cascadeHandler) {
+      pkField = this.cascadeHandler.findPrimaryKey(model);
+      recordsToCascade = await this.withDeleted(() =>
+        delegate.findMany({
+          where: deletedWhere,
+          select: {
+            [pkField]: true,
+            [this.deletedAtField]: true,
+          },
+        }),
+      );
+    }
+
+    const result = await delegate.updateMany({
+      where: deletedWhere,
+      data,
+    });
+
+    if (this.cascadeHandler) {
+      for (const record of recordsToCascade) {
+        const deletedAt = record[this.deletedAtField];
+        if (!deletedAt) {
+          continue;
+        }
+
+        await SoftDeleteContext.run(
+          {
+            filterMode: 'withDeleted',
+            skipSoftDelete: false,
+            actorId: SoftDeleteContext.getActorId(),
+          },
+          () =>
+            this.cascadeHandler!.cascadeRestore(
+              this.prisma,
+              model,
+              record[pkField],
+              deletedAt,
+              0,
+            ),
+        );
+      }
+    }
+
+    if (result.count > 0) {
+      this.eventEmitter?.emitRestored(
+        new RestoredEvent(model, where, SoftDeleteContext.getActorId(), result.count),
+      );
+    }
+
+    return result;
   }
 
   /**

@@ -9,10 +9,16 @@ export interface PrismaDmmfLike {
         kind?: string;
         type?: string;
         isId?: boolean;
+        isList?: boolean;
         relationFromFields?: string[];
       }>;
     }>;
   };
+}
+
+export interface RelationFilterOptions {
+  enabled?: boolean;
+  maxDepth?: number;
 }
 
 export interface SoftDeleteModuleOptions {
@@ -28,6 +34,8 @@ export interface SoftDeleteModuleOptions {
   enableEvents?: boolean;
   /** Optional Prisma DMMF metadata. Required for cascade when Prisma.dmmf is unavailable. */
   dmmf?: PrismaDmmfLike;
+  /** Opt-in relation read filtering for to-many include/select trees. Default: false */
+  relationFilters?: boolean | RelationFilterOptions;
 }
 
 export interface SoftDeleteModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
@@ -47,4 +55,6 @@ export interface SoftDeleteExtensionOptions {
   eventEmitter?: { emitSoftDeleted: (event: any) => void } | null;
   /** Optional Prisma DMMF metadata. Required for cascade when Prisma.dmmf is unavailable. */
   dmmf?: PrismaDmmfLike;
+  /** Opt-in relation read filtering for to-many include/select trees. Default: false */
+  relationFilters?: boolean | RelationFilterOptions;
 }

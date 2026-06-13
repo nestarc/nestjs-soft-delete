@@ -29,6 +29,27 @@ const defaultOptions: SoftDeleteExtensionOptions = {
   softDeleteModels: ['User', 'Post'],
 };
 
+const relationDmmf = {
+  datamodel: {
+    models: [
+      {
+        name: 'User',
+        fields: [
+          { name: 'id', kind: 'scalar', type: 'String', isId: true },
+          { name: 'posts', kind: 'object', type: 'Post', isList: true },
+        ],
+      },
+      {
+        name: 'Post',
+        fields: [
+          { name: 'id', kind: 'scalar', type: 'String', isId: true },
+          { name: 'author', kind: 'object', type: 'User', isList: false },
+        ],
+      },
+    ],
+  },
+};
+
 describe('_buildSoftDeleteQueryHandlers', () => {
   let handlers: ReturnType<typeof _buildSoftDeleteQueryHandlers>;
 
@@ -244,8 +265,23 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       expect(query).not.toHaveBeenCalled();
       expect(client.post.updateMany).toHaveBeenCalledTimes(1);
       const updateCall = client.post.updateMany.mock.calls[0][0];
-      expect(updateCall.where).toEqual({ authorId: 1 });
+      expect(updateCall.where).toEqual({ authorId: 1, deletedAt: null });
       expect(updateCall.data.deletedAt).toBeInstanceOf(Date);
+    });
+
+    it('should only update records that are not already soft-deleted', async () => {
+      const client = createMockClient('Post');
+      const query = createMockQuery();
+
+      await handlers.deleteMany({
+        model: 'Post',
+        args: { where: { authorId: 1 } },
+        query,
+        client,
+      });
+
+      const updateCall = client.post.updateMany.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ authorId: 1, deletedAt: null });
     });
 
     it('should pass-through for non-soft-delete model', async () => {
@@ -304,6 +340,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       );
 
       const updateCall = client.post.updateMany.mock.calls[0][0];
+      expect(updateCall.where).toEqual({ authorId: 1, deletedAt: null });
       expect(updateCall.data.deletedBy).toBe('user-99');
     });
 
@@ -314,6 +351,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
         eventEmitter: mockEmitter,
       });
       const client = createMockClient('User');
+      client.user.updateMany.mockResolvedValueOnce({ count: 2 });
       const query = createMockQuery();
 
       await handlersWithEvents.deleteMany({
@@ -327,6 +365,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
         expect.objectContaining({
           model: 'User',
           where: { role: 'guest' },
+          count: 2,
         }),
       );
     });
@@ -428,6 +467,92 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       );
 
       expect(query).toHaveBeenCalledWith({ where: { name: 'Alice' } });
+    });
+  });
+
+  describe('relationFilters', () => {
+    it('should add active filters to to-many includes when enabled', async () => {
+      const relationHandlers = _buildSoftDeleteQueryHandlers({
+        ...defaultOptions,
+        relationFilters: true,
+        dmmf: relationDmmf,
+      });
+      const query = createMockQuery();
+
+      await relationHandlers.findMany({
+        model: 'User',
+        args: {
+          where: { role: 'admin' },
+          include: { posts: true },
+        },
+        query,
+      });
+
+      expect(query).toHaveBeenCalledWith({
+        where: { role: 'admin', deletedAt: null },
+        include: {
+          posts: {
+            where: { deletedAt: null },
+          },
+        },
+      });
+    });
+
+    it('should leave relation includes unchanged when disabled', async () => {
+      const query = createMockQuery();
+
+      await handlers.findMany({
+        model: 'User',
+        args: {
+          include: { posts: true },
+        },
+        query,
+      });
+
+      expect(query).toHaveBeenCalledWith({
+        where: { deletedAt: null },
+        include: { posts: true },
+      });
+    });
+
+    it('should honor withDeleted relation paths from SoftDeleteContext', async () => {
+      const relationHandlers = _buildSoftDeleteQueryHandlers({
+        ...defaultOptions,
+        relationFilters: true,
+        dmmf: relationDmmf,
+      });
+      const query = createMockQuery();
+
+      await SoftDeleteContext.run(
+        {
+          filterMode: 'default',
+          skipSoftDelete: false,
+          withDeletedRelationPaths: ['posts'],
+        },
+        async () => {
+          await relationHandlers.findMany({
+            model: 'User',
+            args: { include: { posts: true } },
+            query,
+          });
+        },
+      );
+
+      expect(query).toHaveBeenCalledWith({
+        where: { deletedAt: null },
+        include: { posts: true },
+      });
+    });
+
+    it('should throw RelationDmmfMissingError when enabled without DMMF metadata', async () => {
+      const { RelationDmmfMissingError } = await import('../errors/relation-dmmf-missing.error');
+
+      expect(() =>
+        _buildSoftDeleteQueryHandlers({
+          softDeleteModels: ['User', 'Post'],
+          relationFilters: true,
+        }),
+      ).toThrow(RelationDmmfMissingError);
     });
   });
 
@@ -840,6 +965,28 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       expect(client.user.findMany).toHaveBeenCalledWith({
         where: { role: 'inactive', deletedAt: null },
         select: { id: true },
+      });
+    });
+
+    it('should only update non-deleted parent records during deleteMany cascade', async () => {
+      const cascadeHandlers = _buildSoftDeleteQueryHandlers(cascadeOptions, cascadeDmmf);
+      const client = createCascadeMockClient();
+      const query = createMockQuery();
+
+      client.user.findMany.mockResolvedValueOnce([{ id: 'user-1' }]);
+
+      await cascadeHandlers.deleteMany({
+        model: 'User',
+        args: { where: { role: 'inactive' } },
+        query,
+        client,
+      });
+
+      expect(client.user.updateMany).toHaveBeenCalledWith({
+        where: { role: 'inactive', deletedAt: null },
+        data: {
+          deletedAt: expect.any(Date),
+        },
       });
     });
   });

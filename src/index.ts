@@ -2,6 +2,7 @@
 export { SoftDeleteModule } from './soft-delete.module';
 export type {
   PrismaDmmfLike,
+  RelationFilterOptions,
   SoftDeleteModuleOptions,
   SoftDeleteModuleAsyncOptions,
   SoftDeleteExtensionOptions,
@@ -19,6 +20,7 @@ export { createPrismaSoftDeleteExtension } from './prisma/soft-delete-extension'
 export { WithDeleted } from './decorators/with-deleted.decorator';
 export { OnlyDeleted } from './decorators/only-deleted.decorator';
 export { SkipSoftDelete } from './decorators/skip-soft-delete.decorator';
+export { WithDeletedRelations } from './decorators/with-deleted-relations.decorator';
 
 // Interceptor
 export { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.interceptor';
@@ -27,6 +29,7 @@ export { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.i
 export { SoftDeleteFieldMissingError } from './errors/soft-delete-field-missing.error';
 export { CascadeRelationNotFoundError } from './errors/cascade-relation-not-found.error';
 export { CascadeDmmfMissingError } from './errors/cascade-dmmf-missing.error';
+export { RelationDmmfMissingError } from './errors/relation-dmmf-missing.error';
 
 // Events
 export { SoftDeletedEvent, RestoredEvent, PurgedEvent } from './events/soft-delete.events';

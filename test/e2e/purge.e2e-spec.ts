@@ -16,6 +16,7 @@ import { Prisma, PrismaClient } from '../generated/client';
 import { createPrismaSoftDeleteExtension } from '../../src/prisma/soft-delete-extension';
 import { SoftDeleteModule } from '../../src/soft-delete.module';
 import { SoftDeleteService } from '../../src/services/soft-delete.service';
+import { SoftDeleteContext } from '../../src/services/soft-delete-context';
 import {
   cleanData,
   createBasePrisma,
@@ -255,6 +256,64 @@ describe('SoftDeleteService E2E', () => {
       expect((await rawDeletedAt('posts', post.id))?.getTime()).toBe(
         oldDeletedAt.getTime(),
       );
+    });
+
+    it('restoreMany clears deletedAt and deletedBy for matching soft-deleted rows', async () => {
+      const guest1 = await prisma.user.create({
+        data: { email: 'guest1@test.com', name: 'guest' },
+      });
+      const guest2 = await prisma.user.create({
+        data: { email: 'guest2@test.com', name: 'guest' },
+      });
+      const admin = await prisma.user.create({
+        data: { email: 'admin-restore@test.com', name: 'admin' },
+      });
+
+      await SoftDeleteContext.run(
+        { filterMode: 'default', skipSoftDelete: false, actorId: 'restore-admin' },
+        () =>
+          prisma.user.deleteMany({
+            where: {
+              name: { in: ['guest', 'admin'] },
+            },
+          }),
+      );
+
+      const result = await softDelete.restoreMany('User', {
+        where: {
+          name: 'guest',
+        },
+      });
+
+      expect(result.count).toBe(2);
+
+      const activeGuests = await prisma.user.findMany({
+        where: {
+          name: 'guest',
+        },
+        orderBy: {
+          email: 'asc',
+        },
+      });
+      expect(activeGuests.map((user) => user.id)).toEqual([guest1.id, guest2.id]);
+
+      const adminActive = await prisma.user.findFirst({
+        where: {
+          id: admin.id,
+        },
+      });
+      expect(adminActive).toBeNull();
+
+      const rawGuests = await basePrisma.user.findMany({
+        where: {
+          id: { in: [guest1.id, guest2.id] },
+        },
+        orderBy: {
+          email: 'asc',
+        },
+      });
+      expect(rawGuests.map((user) => user.deletedAt)).toEqual([null, null]);
+      expect(rawGuests.map((user) => user.deletedBy)).toEqual([null, null]);
     });
 
     it('throws when the record is not found', async () => {

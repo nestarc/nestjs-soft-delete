@@ -5,7 +5,12 @@ import { Reflector } from '@nestjs/core';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { SoftDeleteFilterInterceptor } from './soft-delete-filter.interceptor';
 import { SoftDeleteContext } from '../services/soft-delete-context';
-import { WITH_DELETED_KEY, ONLY_DELETED_KEY, SKIP_SOFT_DELETE_KEY } from '../soft-delete.constants';
+import {
+  WITH_DELETED_KEY,
+  ONLY_DELETED_KEY,
+  SKIP_SOFT_DELETE_KEY,
+  WITH_DELETED_RELATIONS_KEY,
+} from '../soft-delete.constants';
 
 describe('SoftDeleteFilterInterceptor', () => {
   let interceptor: SoftDeleteFilterInterceptor;
@@ -80,6 +85,22 @@ describe('SoftDeleteFilterInterceptor', () => {
 
     const result = await firstValueFrom(interceptor.intercept(context, callHandler));
     expect(result).toBe(true);
+  });
+
+  it('should set withDeleted relation paths when @WithDeletedRelations metadata is present', async () => {
+    Reflect.defineMetadata(WITH_DELETED_RELATIONS_KEY, ['posts', 'posts.comments'], mockHandler);
+
+    const context = createMockContext(mockHandler);
+    const callHandler: CallHandler = {
+      handle: () =>
+        new Observable((subscriber) => {
+          subscriber.next(SoftDeleteContext.getWithDeletedRelationPaths());
+          subscriber.complete();
+        }),
+    };
+
+    const result = await firstValueFrom(interceptor.intercept(context, callHandler));
+    expect(result).toEqual(['posts', 'posts.comments']);
   });
 
   it('should default to standard mode when no metadata is present', async () => {

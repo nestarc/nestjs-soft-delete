@@ -4,6 +4,30 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- Active-row unique constraint recipe for PostgreSQL, SQLite, and MySQL.
+- PostgreSQL E2E proof that a partial unique index permits value reuse after soft-delete while rejecting duplicate active rows.
+- Release package verification with `npm pack --dry-run`.
+- Compatibility workflow for NestJS 10 + Prisma 5 on Node 20 and NestJS 11 + Prisma 6 on Node 22.
+- Opt-in `relationFilters` support for to-many Prisma `include` / `select` trees.
+- `@WithDeletedRelations(...paths)` decorator for relation-specific deleted-row inclusion.
+- `RelationDmmfMissingError` for relation filters enabled without Prisma DMMF metadata.
+- `SoftDeleteService.restoreMany()` bulk restore API with cascade restore support.
+- Optional `count` payloads on `SoftDeletedEvent` and `RestoredEvent` for bulk operations.
+- PostgreSQL E2E coverage for relation filters and bulk restore behavior.
+
+### Changed
+
+- Release workflow now publishes through npm trusted publishing with GitHub OIDC instead of a long-lived `NPM_TOKEN`.
+
+### Fixed
+
+- Release workflow now runs lint before publishing.
+- `deleteMany` soft-delete updates now target active rows only so already soft-deleted rows do not get a new deletion timestamp.
+
 ## [0.4.0] - 2026-05-10
 
 ### Added

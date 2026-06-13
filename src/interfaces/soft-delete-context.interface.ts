@@ -4,4 +4,5 @@ export interface SoftDeleteStore {
   filterMode: SoftDeleteFilterMode;
   skipSoftDelete: boolean;
   actorId?: string | null;
+  withDeletedRelationPaths?: string[];
 }

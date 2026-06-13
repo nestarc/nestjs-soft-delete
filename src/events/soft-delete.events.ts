@@ -6,6 +6,7 @@ export class SoftDeletedEvent {
     public readonly where: Record<string, unknown>,
     public readonly deletedAt: Date,
     public readonly actorId: string | null = null,
+    public readonly count?: number,
   ) {}
 }
 
@@ -16,6 +17,7 @@ export class RestoredEvent {
     public readonly model: string,
     public readonly where: Record<string, unknown>,
     public readonly actorId: string | null = null,
+    public readonly count?: number,
   ) {}
 }
 

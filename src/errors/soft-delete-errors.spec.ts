@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SoftDeleteFieldMissingError } from './soft-delete-field-missing.error';
 import { CascadeRelationNotFoundError } from './cascade-relation-not-found.error';
 import { CascadeDmmfMissingError } from './cascade-dmmf-missing.error';
+import { RelationDmmfMissingError } from './relation-dmmf-missing.error';
 
 describe('SoftDeleteFieldMissingError', () => {
   it('should include model name and field name in message', () => {
@@ -32,5 +33,18 @@ describe('CascadeDmmfMissingError', () => {
     expect(error.message).toContain('dmmf option');
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('CascadeDmmfMissingError');
+  });
+});
+
+describe('RelationDmmfMissingError', () => {
+  it('should explain that relationFilters require explicit DMMF metadata', () => {
+    const error = new RelationDmmfMissingError();
+
+    expect(error.message).toContain('Relation read filters require Prisma DMMF metadata');
+    expect(error.message).toContain('Prisma 7');
+    expect(error.message).toContain('dmmf option');
+    expect(error.message).toContain('relationFilters');
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe('RelationDmmfMissingError');
   });
 });

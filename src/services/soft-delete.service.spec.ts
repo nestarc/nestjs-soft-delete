@@ -21,12 +21,16 @@ describe('SoftDeleteService', () => {
     mockPrisma = {
       user: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
         delete: vi.fn(),
       },
       post: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
         update: vi.fn(),
+        updateMany: vi.fn(),
         delete: vi.fn(),
       },
     };
@@ -44,6 +48,109 @@ describe('SoftDeleteService', () => {
     };
 
     service = new SoftDeleteService(defaultOptions, mockPrisma, mockCascadeHandler, mockEventEmitter);
+  });
+
+  describe('restoreMany()', () => {
+    it('should restore deleted records matching the where clause and cascade each affected row', async () => {
+      mockPrisma.user.findMany.mockResolvedValue([
+        { id: '1', deletedAt: deletedDate },
+        { id: '2', deletedAt: deletedDate },
+      ]);
+      mockPrisma.user.updateMany.mockResolvedValue({ count: 2 });
+
+      const result = await service.restoreMany('User', { where: { role: 'guest' } });
+
+      expect(result).toEqual({ count: 2 });
+      expect(mockPrisma.user.findMany).toHaveBeenCalledWith({
+        where: {
+          role: 'guest',
+          deletedAt: { not: null },
+        },
+        select: {
+          id: true,
+          deletedAt: true,
+        },
+      });
+      expect(mockPrisma.user.updateMany).toHaveBeenCalledWith({
+        where: {
+          role: 'guest',
+          deletedAt: { not: null },
+        },
+        data: {
+          deletedAt: null,
+          deletedBy: null,
+        },
+      });
+      expect(mockCascadeHandler.cascadeRestore).toHaveBeenCalledTimes(2);
+      expect(mockCascadeHandler.cascadeRestore).toHaveBeenNthCalledWith(
+        1,
+        mockPrisma,
+        'User',
+        '1',
+        deletedDate,
+        0,
+      );
+      expect(mockCascadeHandler.cascadeRestore).toHaveBeenNthCalledWith(
+        2,
+        mockPrisma,
+        'User',
+        '2',
+        deletedDate,
+        0,
+      );
+      expect(mockEventEmitter.emitRestored).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'User',
+          where: { role: 'guest' },
+          count: 2,
+        }),
+      );
+    });
+
+    it('should update deleted rows without loading records when cascadeHandler is null', async () => {
+      const serviceNoCascade = new SoftDeleteService(defaultOptions, mockPrisma, null, mockEventEmitter);
+      mockPrisma.user.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await serviceNoCascade.restoreMany('User', { where: { role: 'guest' } });
+
+      expect(result).toEqual({ count: 1 });
+      expect(mockPrisma.user.findMany).not.toHaveBeenCalled();
+      expect(mockPrisma.user.updateMany).toHaveBeenCalledWith({
+        where: {
+          role: 'guest',
+          deletedAt: { not: null },
+        },
+        data: {
+          deletedAt: null,
+          deletedBy: null,
+        },
+      });
+    });
+
+    it('should only clear deletedAt when deletedByField is not configured', async () => {
+      const optionsNoDeletedBy: SoftDeleteModuleOptions = {
+        softDeleteModels: ['User'],
+        prismaServiceToken: 'PRISMA',
+      };
+      const serviceNoDeletedBy = new SoftDeleteService(
+        optionsNoDeletedBy,
+        mockPrisma,
+        null,
+        mockEventEmitter,
+      );
+      mockPrisma.user.updateMany.mockResolvedValue({ count: 1 });
+
+      await serviceNoDeletedBy.restoreMany('User');
+
+      expect(mockPrisma.user.updateMany).toHaveBeenCalledWith({
+        where: {
+          deletedAt: { not: null },
+        },
+        data: {
+          deletedAt: null,
+        },
+      });
+    });
   });
 
   describe('restore()', () => {

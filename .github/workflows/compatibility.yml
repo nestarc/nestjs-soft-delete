@@ -1,0 +1,65 @@
+name: Compatibility
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  peer-matrix:
+    name: Nest ${{ matrix.nest-version }} / Prisma ${{ matrix.prisma-version }} / Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node-version: 20
+            nest-version: ^10.0.0
+            prisma-version: ^5.0.0
+          - node-version: 22
+            nest-version: ^11.0.0
+            prisma-version: ^6.0.0
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: soft_delete_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install peer matrix
+        run: npm install --no-save @nestjs/common@${{ matrix.nest-version }} @nestjs/core@${{ matrix.nest-version }} @nestjs/platform-express@${{ matrix.nest-version }} @nestjs/testing@${{ matrix.nest-version }} @prisma/client@${{ matrix.prisma-version }} prisma@${{ matrix.prisma-version }}
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: E2E Tests
+        run: npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/soft_delete_test

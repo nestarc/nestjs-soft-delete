@@ -33,11 +33,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: 22.14.0
           registry-url: https://registry.npmjs.org
 
+      - name: Use npm with trusted publishing support
+        run: npm install -g npm@^11.5.1
+
       - run: npm ci
+
+      - name: Lint
+        run: npm run lint
 
       - name: Unit Tests
         run: npm test
@@ -50,7 +55,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Verify Package Contents
+        run: npm pack --dry-run
+
+      - name: Publish with trusted publishing
+        run: npm publish --access public

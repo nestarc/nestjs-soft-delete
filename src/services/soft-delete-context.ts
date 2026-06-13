@@ -44,4 +44,12 @@ export class SoftDeleteContext {
   static getActorId(): string | null {
     return this.storage.getStore()?.actorId ?? null;
   }
+
+  static getWithDeletedRelationPaths(): string[] {
+    return this.storage.getStore()?.withDeletedRelationPaths ?? [];
+  }
+
+  static isWithDeletedRelationPath(path: string): boolean {
+    return this.getWithDeletedRelationPaths().includes(path);
+  }
 }
