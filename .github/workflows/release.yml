@@ -13,6 +13,7 @@ jobs:
   release:
     name: Publish to npm
     runs-on: ubuntu-latest
+    environment: npm
     services:
       postgres:
         image: postgres:15-alpine
