@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client/extension';
 import { CascadeHandler } from './cascade-handler';
 import { isCascadeConfigured, requireCascadeDmmf } from './dmmf-resolver';
 import { applyRelationReadFilters } from './relation-filter';
@@ -328,9 +328,11 @@ export function _buildSoftDeleteQueryHandlers(
  * (converting them to soft-delete updates) and read operations
  * (injecting deletedAt filters based on the current context).
  */
-export function createPrismaSoftDeleteExtension(options: SoftDeleteExtensionOptions) {
+export function createPrismaSoftDeleteExtension(
+  options: SoftDeleteExtensionOptions,
+): ReturnType<typeof Prisma.defineExtension> {
   return Prisma.defineExtension((client) => {
-    const handlers = _buildSoftDeleteQueryHandlers(options, (Prisma as any).dmmf);
+    const handlers = _buildSoftDeleteQueryHandlers(options);
 
     return client.$extends({
       query: {

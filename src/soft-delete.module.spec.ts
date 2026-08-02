@@ -7,6 +7,7 @@ import { SoftDeleteFilterInterceptor } from './interceptors/soft-delete-filter.i
 import { CascadeHandler } from './prisma/cascade-handler';
 import type { SoftDeleteModuleOptions } from './interfaces/soft-delete-options.interface';
 import { SoftDeleteEventEmitter } from './events/soft-delete-event-emitter';
+import { CascadeDmmfMissingError } from './errors/cascade-dmmf-missing.error';
 
 describe('SoftDeleteModule', () => {
   const MOCK_PRISMA_TOKEN = 'PrismaService';
@@ -301,31 +302,17 @@ describe('SoftDeleteModule', () => {
       expect(result.findForeignKey('User', 'Post')).toBe('ownerId');
     });
 
-    it('should throw CascadeDmmfMissingError when cascade is configured and Prisma.dmmf is unavailable', async () => {
-      vi.resetModules();
-      vi.doMock('@prisma/client', () => ({
-        Prisma: {},
-      }));
+    it('should throw CascadeDmmfMissingError when cascade is configured without dmmf', () => {
+      const cascadeOptions = {
+        ...options,
+        cascade: { User: ['Post'] },
+      };
+      const dynamicModule = SoftDeleteModule.forRoot(cascadeOptions);
+      const cascadeProvider = dynamicModule.providers?.find(
+        (p: any) => p.provide === CascadeHandler,
+      ) as any;
 
-      try {
-        const { SoftDeleteModule } = await import('./soft-delete.module');
-        const { CascadeHandler } = await import('./prisma/cascade-handler');
-        const { CascadeDmmfMissingError } = await import('./errors/cascade-dmmf-missing.error');
-
-        const cascadeOptions = {
-          ...options,
-          cascade: { User: ['Post'] },
-        };
-        const dynamicModule = SoftDeleteModule.forRoot(cascadeOptions);
-        const cascadeProvider = dynamicModule.providers?.find(
-          (p: any) => p.provide === CascadeHandler,
-        ) as any;
-
-        expect(() => cascadeProvider.useFactory(cascadeOptions)).toThrow(CascadeDmmfMissingError);
-      } finally {
-        vi.doUnmock('@prisma/client');
-        vi.resetModules();
-      }
+      expect(() => cascadeProvider.useFactory(cascadeOptions)).toThrow(CascadeDmmfMissingError);
     });
   });
 

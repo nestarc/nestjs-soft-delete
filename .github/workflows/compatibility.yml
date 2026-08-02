@@ -18,9 +18,15 @@ jobs:
           - node-version: 20
             nest-version: ^10.0.0
             prisma-version: ^5.0.0
+            run-e2e: false
           - node-version: 22
             nest-version: ^11.0.0
             prisma-version: ^6.0.0
+            run-e2e: false
+          - node-version: 24
+            nest-version: ^11.0.0
+            prisma-version: ^7.0.0
+            run-e2e: true
 
     services:
       postgres:
@@ -50,6 +56,10 @@ jobs:
       - name: Install peer matrix
         run: npm install --no-save @nestjs/common@${{ matrix.nest-version }} @nestjs/core@${{ matrix.nest-version }} @nestjs/platform-express@${{ matrix.nest-version }} @nestjs/testing@${{ matrix.nest-version }} @prisma/client@${{ matrix.prisma-version }} prisma@${{ matrix.prisma-version }}
 
+      - name: Align Prisma 7 test tooling
+        if: matrix.run-e2e
+        run: npm install --no-save @prisma/adapter-pg@${{ matrix.prisma-version }} @prisma/internals@${{ matrix.prisma-version }}
+
       - name: Lint
         run: npm run lint
 
@@ -60,6 +70,7 @@ jobs:
         run: npm run build
 
       - name: E2E Tests
+        if: matrix.run-e2e
         run: npm run test:e2e
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/soft_delete_test

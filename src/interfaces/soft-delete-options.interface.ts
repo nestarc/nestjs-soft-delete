@@ -32,7 +32,7 @@ export interface SoftDeleteModuleOptions {
   prismaServiceToken: any;
   /** Enable event emission. Requires @nestjs/event-emitter to be installed. Default: false */
   enableEvents?: boolean;
-  /** Optional Prisma DMMF metadata. Required for cascade when Prisma.dmmf is unavailable. */
+  /** Prisma DMMF metadata. Required when cascade or relationFilters are enabled. */
   dmmf?: PrismaDmmfLike;
   /** Opt-in relation read filtering for to-many include/select trees. Default: false */
   relationFilters?: boolean | RelationFilterOptions;
@@ -53,7 +53,7 @@ export interface SoftDeleteExtensionOptions {
   maxCascadeDepth?: number;
   /** Optional event emitter for soft-delete lifecycle events */
   eventEmitter?: { emitSoftDeleted: (event: any) => void } | null;
-  /** Optional Prisma DMMF metadata. Required for cascade when Prisma.dmmf is unavailable. */
+  /** Prisma DMMF metadata. Required when cascade or relationFilters are enabled. */
   dmmf?: PrismaDmmfLike;
   /** Opt-in relation read filtering for to-many include/select trees. Default: false */
   relationFilters?: boolean | RelationFilterOptions;

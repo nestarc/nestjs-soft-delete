@@ -12,7 +12,8 @@
  *
  * Prerequisites: see setup-helpers.ts.
  */
-import { Prisma, PrismaClient } from '../generated/client';
+import { PrismaClient } from '../generated/client/client';
+import { prismaDmmf } from './prisma-dmmf';
 import { createPrismaSoftDeleteExtension } from '../../src/prisma/soft-delete-extension';
 import {
   cleanData,
@@ -20,8 +21,6 @@ import {
   createTables,
   dropTables,
 } from './setup-helpers';
-
-const prismaDmmf = (Prisma as any).dmmf;
 
 function extendClient(
   client: PrismaClient,

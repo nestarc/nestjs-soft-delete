@@ -10,7 +10,8 @@
  * These tests use raw SQL for table setup/teardown so they work
  * without running prisma migrate.
  */
-import { PrismaClient } from '../generated/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/client/client';
 import { createPrismaSoftDeleteExtension } from '../../src/prisma/soft-delete-extension';
 import { SoftDeleteContext } from '../../src/services/soft-delete-context';
 
@@ -70,7 +71,9 @@ function extendClient(client: PrismaClient) {
 }
 
 beforeAll(async () => {
-  basePrisma = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  basePrisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: DATABASE_URL }),
+  });
   await basePrisma.$connect();
   for (const sql of CREATE_TABLES) {
     await basePrisma.$executeRawUnsafe(sql);

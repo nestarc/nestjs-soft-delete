@@ -4,7 +4,7 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.5.0] - Unreleased
+## [0.6.0] - 2026-08-02
 
 ### Added
 
@@ -18,10 +18,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - `SoftDeleteService.restoreMany()` bulk restore API with cascade restore support.
 - Optional `count` payloads on `SoftDeletedEvent` and `RestoredEvent` for bulk operations.
 - PostgreSQL E2E coverage for relation filters and bulk restore behavior.
+- Prisma 7 compatibility coverage using the `prisma-client` generator, Prisma Config, and the PostgreSQL driver adapter.
+- Prisma 7 added to the published peer dependency range and compatibility workflow.
 
 ### Changed
 
 - Release workflow now publishes through npm trusted publishing with GitHub OIDC instead of a long-lived `NPM_TOKEN`.
+- Prisma 7 is now the primary development, generated-client, and PostgreSQL E2E target.
+- Shared extension creation now imports from `@prisma/client/extension`, decoupling the package from a consumer's generated client output.
+- Cascade and relation filters now require explicit `dmmf` metadata instead of relying on generated-client runtime metadata.
 
 ### Fixed
 

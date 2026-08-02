@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import { CascadeDmmfMissingError } from '../errors/cascade-dmmf-missing.error';
 import type { PrismaDmmfLike } from '../interfaces/soft-delete-options.interface';
 
@@ -15,7 +14,7 @@ export function isCascadeConfigured(cascade?: Record<string, string[]>): boolean
 export function resolveCascadeDmmf({
   optionsDmmf,
   fallbackDmmf,
-  prismaDmmf = (Prisma as any).dmmf,
+  prismaDmmf,
 }: ResolveCascadeDmmfOptions): PrismaDmmfLike | undefined {
   return optionsDmmf ?? fallbackDmmf ?? prismaDmmf;
 }

@@ -17,7 +17,8 @@
  */
 import { EventEmitter2, EventEmitterModule } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma, PrismaClient } from '../generated/client';
+import { PrismaClient } from '../generated/client/client';
+import { prismaDmmf } from './prisma-dmmf';
 import { createPrismaSoftDeleteExtension } from '../../src/prisma/soft-delete-extension';
 import { SoftDeleteModule } from '../../src/soft-delete.module';
 import { SoftDeleteService } from '../../src/services/soft-delete.service';
@@ -37,8 +38,6 @@ import {
 } from './setup-helpers';
 
 const PRISMA_TOKEN = 'PRISMA_CLIENT';
-const prismaDmmf = (Prisma as any).dmmf;
-
 let basePrisma: PrismaClient;
 let prisma: any;
 let module: TestingModule;

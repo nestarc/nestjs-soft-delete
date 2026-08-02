@@ -1,4 +1,5 @@
-import { Prisma, PrismaClient } from '../generated/client';
+import { PrismaClient } from '../generated/client/client';
+import { prismaDmmf } from './prisma-dmmf';
 import { createPrismaSoftDeleteExtension, SoftDeleteContext } from '../../src';
 import {
   cleanData,
@@ -6,8 +7,6 @@ import {
   createTables,
   dropTables,
 } from './setup-helpers';
-
-const prismaDmmf = (Prisma as any).dmmf;
 
 function extendClient(client: PrismaClient, relationFilters: boolean) {
   return client.$extends(

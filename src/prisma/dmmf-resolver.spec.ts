@@ -1,32 +1,7 @@
-import { Prisma } from '@prisma/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { CascadeDmmfMissingError } from '../errors/cascade-dmmf-missing.error';
 import type { PrismaDmmfLike } from '../interfaces/soft-delete-options.interface';
 import { isCascadeConfigured, requireCascadeDmmf, resolveCascadeDmmf } from './dmmf-resolver';
-
-const prismaStatic = Prisma as typeof Prisma & { dmmf?: PrismaDmmfLike };
-const originalPrismaDmmfDescriptor = Object.getOwnPropertyDescriptor(prismaStatic, 'dmmf');
-
-function setStaticPrismaDmmf(dmmf: PrismaDmmfLike): void {
-  Object.defineProperty(prismaStatic, 'dmmf', {
-    configurable: true,
-    writable: true,
-    value: dmmf,
-  });
-}
-
-function clearStaticPrismaDmmf(): void {
-  Reflect.deleteProperty(prismaStatic, 'dmmf');
-}
-
-afterEach(() => {
-  if (originalPrismaDmmfDescriptor) {
-    Object.defineProperty(prismaStatic, 'dmmf', originalPrismaDmmfDescriptor);
-    return;
-  }
-
-  Reflect.deleteProperty(prismaStatic, 'dmmf');
-});
 
 const optionsDmmf: PrismaDmmfLike = {
   datamodel: {
@@ -73,7 +48,7 @@ describe('isCascadeConfigured', () => {
 });
 
 describe('resolveCascadeDmmf', () => {
-  it('should prefer options dmmf over fallback and Prisma static dmmf', () => {
+  it('should prefer options dmmf over fallback and provided Prisma dmmf', () => {
     const result = resolveCascadeDmmf({
       optionsDmmf,
       fallbackDmmf,
@@ -99,14 +74,6 @@ describe('resolveCascadeDmmf', () => {
 
     expect(result).toBe(prismaDmmf);
   });
-
-  it('should use Prisma static dmmf when no explicit sources are provided', () => {
-    setStaticPrismaDmmf(prismaDmmf);
-
-    const result = resolveCascadeDmmf({});
-
-    expect(result).toBe(prismaDmmf);
-  });
 });
 
 describe('requireCascadeDmmf', () => {
@@ -115,8 +82,6 @@ describe('requireCascadeDmmf', () => {
   });
 
   it('should throw CascadeDmmfMissingError when no dmmf is available', () => {
-    clearStaticPrismaDmmf();
-
     expect(() =>
       requireCascadeDmmf({
         optionsDmmf: undefined,
@@ -126,9 +91,7 @@ describe('requireCascadeDmmf', () => {
     ).toThrow(CascadeDmmfMissingError);
   });
 
-  it('should throw CascadeDmmfMissingError when static Prisma dmmf is absent', () => {
-    clearStaticPrismaDmmf();
-
+  it('should throw CascadeDmmfMissingError when no source is configured', () => {
     expect(() => requireCascadeDmmf({})).toThrow(CascadeDmmfMissingError);
   });
 });

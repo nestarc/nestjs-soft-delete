@@ -14,6 +14,7 @@ export default defineConfig({
     '@nestjs/common',
     '@nestjs/core',
     '@prisma/client',
+    '@prisma/client/extension',
     'reflect-metadata',
     'rxjs',
     '@nestarc/tenancy',

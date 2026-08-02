@@ -27,7 +27,8 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
-import { Prisma, PrismaClient } from '../generated/client';
+import { PrismaClient } from '../generated/client/client';
+import { prismaDmmf } from './prisma-dmmf';
 import {
   createPrismaSoftDeleteExtension,
   OnlyDeleted,
@@ -45,8 +46,6 @@ import {
 } from './setup-helpers';
 
 const PRISMA_TOKEN = 'PRISMA_CLIENT';
-const prismaDmmf = (Prisma as any).dmmf;
-
 @Controller('users')
 class UsersController {
   constructor(

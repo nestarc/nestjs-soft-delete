@@ -6,7 +6,8 @@
  * running prisma migrate.
  */
 import type { DynamicModule, Provider } from '@nestjs/common';
-import { PrismaClient } from '../generated/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../generated/client/client';
 
 export const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgresql://test:test@localhost:5432/soft_delete_test';
@@ -71,7 +72,9 @@ export async function cleanData(prisma: PrismaClient): Promise<void> {
 }
 
 export function createBasePrisma(): PrismaClient {
-  return new PrismaClient({ datasourceUrl: DATABASE_URL });
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: DATABASE_URL }),
+  });
 }
 
 class E2eProviderModule {}

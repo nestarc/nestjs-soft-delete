@@ -29,7 +29,6 @@ describe('CascadeDmmfMissingError', () => {
     const error = new CascadeDmmfMissingError();
 
     expect(error.message).toContain('Cascade soft-delete requires Prisma DMMF metadata');
-    expect(error.message).toContain('Prisma 7');
     expect(error.message).toContain('dmmf option');
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('CascadeDmmfMissingError');
@@ -41,7 +40,6 @@ describe('RelationDmmfMissingError', () => {
     const error = new RelationDmmfMissingError();
 
     expect(error.message).toContain('Relation read filters require Prisma DMMF metadata');
-    expect(error.message).toContain('Prisma 7');
     expect(error.message).toContain('dmmf option');
     expect(error.message).toContain('relationFilters');
     expect(error).toBeInstanceOf(Error);

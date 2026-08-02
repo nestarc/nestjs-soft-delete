@@ -3,6 +3,7 @@ import { _buildSoftDeleteQueryHandlers, createPrismaSoftDeleteExtension } from '
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import type { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
 import { resetRegisteredSoftDeleteEventEmitter, SoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
+import { CascadeDmmfMissingError } from '../errors/cascade-dmmf-missing.error';
 
 /**
  * Creates a mock query function that resolves with whatever args it receives,
@@ -923,28 +924,13 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       });
     });
 
-    it('should throw CascadeDmmfMissingError when cascade is configured and Prisma.dmmf is unavailable', async () => {
-      vi.resetModules();
-      vi.doMock('@prisma/client', () => ({
-        Prisma: {
-          defineExtension: vi.fn((extensionFactory: any) => extensionFactory),
-        },
-      }));
-
-      try {
-        const { _buildSoftDeleteQueryHandlers } = await import('./soft-delete-extension');
-        const { CascadeDmmfMissingError } = await import('../errors/cascade-dmmf-missing.error');
-
-        expect(() =>
-          _buildSoftDeleteQueryHandlers({
-            softDeleteModels: ['User', 'Post'],
-            cascade: { User: ['Post'] },
-          }),
-        ).toThrow(CascadeDmmfMissingError);
-      } finally {
-        vi.doUnmock('@prisma/client');
-        vi.resetModules();
-      }
+    it('should throw CascadeDmmfMissingError when cascade is configured without dmmf', () => {
+      expect(() =>
+        _buildSoftDeleteQueryHandlers({
+          softDeleteModels: ['User', 'Post'],
+          cascade: { User: ['Post'] },
+        }),
+      ).toThrow(CascadeDmmfMissingError);
     });
 
     it('should find records with deletedAt null filter before deleteMany cascade', async () => {

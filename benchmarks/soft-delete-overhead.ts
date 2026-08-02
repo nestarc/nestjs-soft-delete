@@ -12,10 +12,14 @@
  *   docker compose up -d
  *   DATABASE_URL=postgresql://test:test@localhost:5432/soft_delete_test \
  *     npx prisma generate --schema=test/prisma/schema.prisma && \
- *     npx ts-node benchmarks/soft-delete-overhead.ts
+ *     npx tsx benchmarks/soft-delete-overhead.ts
  */
 
+import { readFileSync } from 'node:fs';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { getDMMF } from '@prisma/internals';
 import { createPrismaSoftDeleteExtension } from '../src/prisma/soft-delete-extension';
+import { PrismaClient } from '../test/generated/client/client';
 
 const DATABASE_URL =
   process.env.DATABASE_URL ??
@@ -101,9 +105,12 @@ const CREATE_TABLES = [
 async function main() {
   console.log('=== @nestarc/soft-delete Benchmark ===\n');
 
-  // Dynamic import for generated client
-  const { PrismaClient } = require('../test/generated/client');
-  const basePrisma = new PrismaClient({ datasourceUrl: DATABASE_URL });
+  const basePrisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: DATABASE_URL }),
+  });
+  const dmmf = await getDMMF({
+    datamodel: readFileSync('test/prisma/schema.prisma', 'utf8'),
+  });
   await basePrisma.$connect();
 
   // Setup tables
@@ -270,6 +277,7 @@ async function main() {
         User: ['Post'],
         Post: ['Comment'],
       },
+      dmmf,
     }),
   ) as any;
 
