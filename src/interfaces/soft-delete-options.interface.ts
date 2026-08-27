@@ -36,6 +36,13 @@ export interface SoftDeleteModuleOptions {
   dmmf?: PrismaDmmfLike;
   /** Opt-in relation read filtering for to-many include/select trees. Default: false */
   relationFilters?: boolean | RelationFilterOptions;
+  /**
+   * Require the @nestarc/audit-log atomic lifecycle bridge. The official
+   * extension order is tenancy -> audit-log -> soft-delete.
+   */
+  auditLifecycle?: 'atomic-required';
+  /** Maximum records converted to record-level lifecycle mutations. Default: 1000. */
+  auditMaxBatchRecords?: number;
 }
 
 export interface SoftDeleteModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
@@ -57,4 +64,8 @@ export interface SoftDeleteExtensionOptions {
   dmmf?: PrismaDmmfLike;
   /** Opt-in relation read filtering for to-many include/select trees. Default: false */
   relationFilters?: boolean | RelationFilterOptions;
+  /** Require same-transaction record-level soft-delete audit integration. */
+  auditLifecycle?: 'atomic-required';
+  /** Maximum records converted to record-level lifecycle mutations. Default: 1000. */
+  auditMaxBatchRecords?: number;
 }

@@ -37,9 +37,15 @@ const CREATE_TABLES = [
     token      TEXT UNIQUE NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`,
+  `CREATE TABLE IF NOT EXISTS access_keys (
+    access_token TEXT PRIMARY KEY,
+    label        TEXT NOT NULL,
+    deleted_at   TIMESTAMPTZ
+  )`,
 ];
 
 const DROP_TABLES = [
+  'DROP TABLE IF EXISTS access_keys CASCADE',
   'DROP TABLE IF EXISTS comments CASCADE',
   'DROP TABLE IF EXISTS posts CASCADE',
   'DROP TABLE IF EXISTS sessions CASCADE',
@@ -47,6 +53,7 @@ const DROP_TABLES = [
 ];
 
 const CLEAN_TABLES = [
+  'DELETE FROM access_keys',
   'DELETE FROM comments',
   'DELETE FROM posts',
   'DELETE FROM sessions',

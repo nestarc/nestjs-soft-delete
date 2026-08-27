@@ -9,6 +9,11 @@ export interface CascadeHandlerOptions {
   dmmf: PrismaDmmfLike;
 }
 
+export type CascadeLifecycleRunner = <T>(
+  model: string,
+  callback: (client: any) => Promise<T>,
+) => Promise<T>;
+
 /**
  * Handles cascading soft-delete and restore operations by walking
  * the cascade graph defined in the module options and using Prisma
@@ -51,9 +56,7 @@ export class CascadeHandler {
       return cached;
     }
 
-    const childModel = this.dmmf.datamodel.models.find(
-      (m: any) => m.name === child,
-    );
+    const childModel = this.dmmf.datamodel.models.find((m: any) => m.name === child);
 
     if (!childModel) {
       throw new CascadeRelationNotFoundError(parent, child);
@@ -85,6 +88,7 @@ export class CascadeHandler {
     parentId: unknown,
     deletedAt: Date,
     depth: number,
+    lifecycle?: CascadeLifecycleRunner,
   ): Promise<void> {
     if (depth >= this.maxCascadeDepth) {
       return;
@@ -100,30 +104,52 @@ export class CascadeHandler {
       const childKey = childModel.charAt(0).toLowerCase() + childModel.slice(1);
       const pkField = this.findPrimaryKey(childModel);
 
-      // Soft-delete all non-deleted children of this parent
-      await prisma[childKey].updateMany({
-        where: {
-          [fk]: parentId,
-          [this.deletedAtField]: null,
-        },
-        data: {
-          [this.deletedAtField]: deletedAt,
-        },
-      });
+      if (!lifecycle) {
+        await prisma[childKey].updateMany({
+          where: {
+            [fk]: parentId,
+            [this.deletedAtField]: null,
+          },
+          data: {
+            [this.deletedAtField]: deletedAt,
+          },
+        });
+        const affectedChildren = await prisma[childKey].findMany({
+          where: { [fk]: parentId, [this.deletedAtField]: deletedAt },
+          select: { [pkField]: true },
+        });
+        for (const child of affectedChildren) {
+          await this.cascadeSoftDelete(prisma, childModel, child[pkField], deletedAt, depth + 1);
+        }
+        continue;
+      }
 
-      // Find only children that were just soft-deleted (matching deletedAt) to recurse into
       const affectedChildren = await prisma[childKey].findMany({
-        where: { [fk]: parentId, [this.deletedAtField]: deletedAt },
+        where: { [fk]: parentId, [this.deletedAtField]: null },
         select: { [pkField]: true },
       });
 
       for (const child of affectedChildren) {
+        const data: Record<string, unknown> = {
+          [this.deletedAtField]: deletedAt,
+        };
+        const update = (mutationClient: any) =>
+          mutationClient[childKey].update({
+            where: {
+              [pkField]: child[pkField],
+              [fk]: parentId,
+              [this.deletedAtField]: null,
+            },
+            data,
+          });
+        await lifecycle(childModel, update);
         await this.cascadeSoftDelete(
           prisma,
           childModel,
           child[pkField],
           deletedAt,
           depth + 1,
+          lifecycle,
         );
       }
     }
@@ -140,6 +166,7 @@ export class CascadeHandler {
     parentId: unknown,
     deletedAt: Date,
     depth: number,
+    lifecycle?: CascadeLifecycleRunner,
   ): Promise<void> {
     if (depth >= this.maxCascadeDepth) {
       return;
@@ -170,28 +197,53 @@ export class CascadeHandler {
         select: { [pkField]: true, [this.deletedAtField]: true },
       });
 
-      // Restore all children matching the timestamp window
-      await prisma[childKey].updateMany({
-        where: {
-          [fk]: parentId,
-          [this.deletedAtField]: {
-            gte: lowerBound,
-            lte: upperBound,
+      if (!lifecycle) {
+        await prisma[childKey].updateMany({
+          where: {
+            [fk]: parentId,
+            [this.deletedAtField]: {
+              gte: lowerBound,
+              lte: upperBound,
+            },
           },
-        },
-        data: {
-          [this.deletedAtField]: null,
-        },
-      });
+          data: {
+            [this.deletedAtField]: null,
+          },
+        });
+        for (const child of affectedChildren) {
+          await this.cascadeRestore(
+            prisma,
+            childModel,
+            child[pkField],
+            child[this.deletedAtField],
+            depth + 1,
+          );
+        }
+        continue;
+      }
 
       // Recurse for each affected child with its original deletedAt
       for (const child of affectedChildren) {
+        const data: Record<string, unknown> = {
+          [this.deletedAtField]: null,
+        };
+        const update = (mutationClient: any) =>
+          mutationClient[childKey].update({
+            where: {
+              [pkField]: child[pkField],
+              [fk]: parentId,
+              [this.deletedAtField]: child[this.deletedAtField],
+            },
+            data,
+          });
+        await lifecycle(childModel, update);
         await this.cascadeRestore(
           prisma,
           childModel,
           child[pkField],
           child[this.deletedAtField],
           depth + 1,
+          lifecycle,
         );
       }
     }

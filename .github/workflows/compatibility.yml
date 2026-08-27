@@ -54,11 +54,11 @@ jobs:
       - run: npm ci
 
       - name: Install peer matrix
-        run: npm install --no-save @nestjs/common@${{ matrix.nest-version }} @nestjs/core@${{ matrix.nest-version }} @nestjs/platform-express@${{ matrix.nest-version }} @nestjs/testing@${{ matrix.nest-version }} @prisma/client@${{ matrix.prisma-version }} prisma@${{ matrix.prisma-version }}
+        run: npm install --no-save --legacy-peer-deps @nestjs/common@${{ matrix.nest-version }} @nestjs/core@${{ matrix.nest-version }} @nestjs/platform-express@${{ matrix.nest-version }} @nestjs/testing@${{ matrix.nest-version }} @prisma/client@${{ matrix.prisma-version }} prisma@${{ matrix.prisma-version }}
 
       - name: Align Prisma 7 test tooling
         if: matrix.run-e2e
-        run: npm install --no-save @prisma/adapter-pg@${{ matrix.prisma-version }} @prisma/internals@${{ matrix.prisma-version }}
+        run: npm install --no-save --legacy-peer-deps @prisma/adapter-pg@${{ matrix.prisma-version }} @prisma/internals@${{ matrix.prisma-version }}
 
       - name: Lint
         run: npm run lint

@@ -102,9 +102,7 @@ describe('CascadeHandler', () => {
     });
 
     it('should throw CascadeRelationNotFoundError when no relation exists', () => {
-      expect(() => handler.findForeignKey('Comment', 'User')).toThrow(
-        CascadeRelationNotFoundError,
-      );
+      expect(() => handler.findForeignKey('Comment', 'User')).toThrow(CascadeRelationNotFoundError);
     });
 
     it('should throw CascadeRelationNotFoundError when child model does not exist in dmmf', () => {
@@ -164,9 +162,7 @@ describe('CascadeHandler', () => {
           models: [
             {
               name: 'Log',
-              fields: [
-                { name: 'logId', kind: 'scalar', type: 'String' },
-              ],
+              fields: [{ name: 'logId', kind: 'scalar', type: 'String' }],
             },
           ],
         },
@@ -190,10 +186,7 @@ describe('CascadeHandler', () => {
       const prisma = createMockPrisma();
       const deletedAt = new Date('2025-01-15T10:00:00Z');
 
-      prisma.post.findMany.mockResolvedValueOnce([
-        { id: 'post-1' },
-        { id: 'post-2' },
-      ]);
+      prisma.post.findMany.mockResolvedValueOnce([{ id: 'post-1' }, { id: 'post-2' }]);
       // For each post, comments findMany returns empty
       prisma.comment.findMany.mockResolvedValue([]);
 
@@ -331,6 +324,35 @@ describe('CascadeHandler', () => {
         select: { projectId: true },
       });
     });
+
+    it('keeps parent relation and active-row guards for lifecycle mutations', async () => {
+      const deletedAt = new Date('2025-01-15T10:00:00Z');
+      const tx = {
+        post: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'post-1' }]),
+          update: vi.fn().mockResolvedValue({ id: 'post-1' }),
+        },
+        comment: {
+          findMany: vi.fn().mockResolvedValue([]),
+          update: vi.fn(),
+        },
+      };
+      const lifecycle = vi.fn(async (_model: string, callback: (client: any) => Promise<unknown>) =>
+        callback(tx),
+      );
+
+      await handler.cascadeSoftDelete(tx, 'User', 'user-1', deletedAt, 0, lifecycle);
+
+      expect(tx.post.update).toHaveBeenCalledWith({
+        where: {
+          id: 'post-1',
+          authorId: 'user-1',
+          deletedAt: null,
+        },
+        data: { deletedAt },
+      });
+      expect(lifecycle).toHaveBeenCalledWith('Post', expect.any(Function));
+    });
   });
 
   // ── cascadeRestore ─────────────────────────────────────────────────────
@@ -342,9 +364,7 @@ describe('CascadeHandler', () => {
       const lowerBound = new Date(deletedAt.getTime() - 1000);
       const upperBound = new Date(deletedAt.getTime() + 1000);
 
-      prisma.post.findMany.mockResolvedValueOnce([
-        { id: 'post-1', deletedAt },
-      ]);
+      prisma.post.findMany.mockResolvedValueOnce([{ id: 'post-1', deletedAt }]);
       prisma.comment.findMany.mockResolvedValue([]);
 
       await handler.cascadeRestore(prisma, 'User', 'user-1', deletedAt, 0);
@@ -382,9 +402,7 @@ describe('CascadeHandler', () => {
       const prisma = createMockPrisma();
       const deletedAt = new Date('2025-01-15T10:00:00Z');
 
-      prisma.post.findMany.mockResolvedValueOnce([
-        { id: 'post-1', deletedAt },
-      ]);
+      prisma.post.findMany.mockResolvedValueOnce([{ id: 'post-1', deletedAt }]);
 
       await shallowHandler.cascadeRestore(prisma, 'User', 'user-1', deletedAt, 0);
 
@@ -405,6 +423,35 @@ describe('CascadeHandler', () => {
       expect(prisma.user.updateMany).not.toHaveBeenCalled();
       expect(prisma.post.updateMany).not.toHaveBeenCalled();
       expect(prisma.comment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('keeps relation and exact captured deletion guards for lifecycle restores', async () => {
+      const deletedAt = new Date('2025-01-15T10:00:00Z');
+      const tx = {
+        post: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'post-1', deletedAt }]),
+          update: vi.fn().mockResolvedValue({ id: 'post-1' }),
+        },
+        comment: {
+          findMany: vi.fn().mockResolvedValue([]),
+          update: vi.fn(),
+        },
+      };
+      const lifecycle = vi.fn(async (_model: string, callback: (client: any) => Promise<unknown>) =>
+        callback(tx),
+      );
+
+      await handler.cascadeRestore(tx, 'User', 'user-1', deletedAt, 0, lifecycle);
+
+      expect(tx.post.update).toHaveBeenCalledWith({
+        where: {
+          id: 'post-1',
+          authorId: 'user-1',
+          deletedAt,
+        },
+        data: { deletedAt: null },
+      });
+      expect(lifecycle).toHaveBeenCalledWith('Post', expect.any(Function));
     });
   });
 });

@@ -4,6 +4,37 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-08-27
+
+### Added
+
+- Opt-in `auditLifecycle: 'atomic-required'` integration with `@nestarc/audit-log`, using the fixed
+  tenancy → audit-log → soft-delete extension order and `withAuditTransaction()`.
+- Deterministic record actions: `Model.softDeleted`, `Model.restored`, and `Model.purged`, with
+  record-level cascade and bulk metadata.
+- `auditMaxBatchRecords` fail-closed cap for atomic `deleteMany` and `restoreMany` conversion.
+- PostgreSQL cross-package E2E coverage for commit/rollback, repeated operations, restore,
+  force-delete/purge, cascade, bulk mutation, cap overflow, and tenant metadata against published
+  `@nestarc/audit-log@0.4.1` and `@nestarc/tenancy@0.15.0` packages.
+- Real optional peer contracts for audit-log, tenancy, and event-emitter integrations.
+
+### Changed
+
+- Single delete and restore require the row to be active/deleted respectively, making repeated
+  lifecycle operations fail without producing misleading evidence.
+
+### Fixed
+
+- Preserve state, relation, and timestamp predicates between lifecycle pre-reads and mutations so
+  concurrent or repeated bulk/cascade work fails closed instead of emitting misleading evidence.
+- Guard restore and cascade-restore mutations with the exact captured deletion timestamp, closing
+  restore/re-delete ABA races.
+- Resolve custom primary keys from DMMF for audited bulk operations without cascade configuration.
+- Validate lifecycle options on both Prisma extension and NestJS service paths.
+- Require audit-log 0.4.1's atomic capability handshake, rejecting legacy and best-effort clients
+  before a lifecycle mutation runs.
+- Emit bulk lifecycle notifications after leaving the audit lifecycle context.
+
 ## [0.6.0] - 2026-08-02
 
 ### Added

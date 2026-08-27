@@ -46,3 +46,11 @@ model Session {
 
   @@map("sessions")
 }
+
+model AccessKey {
+  token     String    @id @map("access_token")
+  label     String
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("access_keys")
+}
