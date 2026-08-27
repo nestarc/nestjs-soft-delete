@@ -37,10 +37,16 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
+      - name: Verify tag matches package version
+        run: node -e "const version = require('./package.json').version; if (process.env.GITHUB_REF_NAME !== 'v' + version) { console.error('tag/package version mismatch'); process.exit(1); }"
+
       - name: Use npm with trusted publishing support
         run: npm install -g npm@^11.5.1
 
       - run: npm ci
+
+      - name: Published Bridge Versions
+        run: npm ls @nestarc/audit-log @nestarc/tenancy
 
       - name: Lint
         run: npm run lint
@@ -53,8 +59,8 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/soft_delete_test
 
-      - name: Build
-        run: npm run build
+      - name: Build & Public Type Test
+        run: npm run test:types
 
       - name: Verify Package Contents
         run: npm pack --dry-run

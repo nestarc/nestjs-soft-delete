@@ -12,6 +12,11 @@ import { DEFAULT_DELETED_AT_FIELD, DEFAULT_MAX_CASCADE_DEPTH } from '../soft-del
 import { SoftDeletedEvent } from '../events/soft-delete.events';
 import { getRegisteredSoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
 import { RelationDmmfMissingError } from '../errors/relation-dmmf-missing.error';
+import {
+  DEFAULT_AUDIT_MAX_BATCH_RECORDS,
+  runAuditLifecycle,
+  validateAuditLifecycleOptions,
+} from './audit-lifecycle';
 
 /**
  * Determines whether a given model name is in the list of soft-delete models.
@@ -58,9 +63,7 @@ function applyReadFilter(
   }
 
   const filter =
-    filterMode === 'onlyDeleted'
-      ? { [deletedAtField]: { not: null } }
-      : { [deletedAtField]: null };
+    filterMode === 'onlyDeleted' ? { [deletedAtField]: { not: null } } : { [deletedAtField]: null };
 
   if (!where) {
     return filter;
@@ -74,6 +77,12 @@ function applyActiveWriteFilter(
   deletedAtField: string,
 ): Record<string, unknown> {
   return { ...(where ?? {}), [deletedAtField]: null };
+}
+
+function findPrimaryKey(model: string, dmmf?: PrismaDmmfLike): string {
+  const modelDef = dmmf?.datamodel.models.find((candidate: any) => candidate.name === model);
+  const pkField = modelDef?.fields.find((field: any) => field.isId);
+  return pkField?.name ?? 'id';
 }
 
 function resolveRelationFilterOptions(
@@ -167,6 +176,8 @@ export function _buildSoftDeleteQueryHandlers(
   const relationFilterOptions = resolveRelationFilterOptions(options.relationFilters);
   const relationFilterDmmf = options.dmmf ?? dmmf;
 
+  validateAuditLifecycleOptions(options);
+
   if (relationFilterOptions.enabled && !relationFilterDmmf) {
     throw new RelationDmmfMissingError();
   }
@@ -226,24 +237,51 @@ export function _buildSoftDeleteQueryHandlers(
 
       const data = buildSoftDeleteData(deletedAtField, deletedByField);
       const modelKey = model.charAt(0).toLowerCase() + model.slice(1);
-      const result = await (client as any)[modelKey].update({
-        where: args.where,
-        data,
-      });
-
-      if (cascadeHandler) {
-        const pkField = cascadeHandler.findPrimaryKey(model);
-        await cascadeHandler.cascadeSoftDelete(
-          client,
-          model,
-          result[pkField],
-          data[deletedAtField] as Date,
-          0,
-        );
-      }
+      const result = await runAuditLifecycle(
+        client,
+        options,
+        model,
+        'delete',
+        'softDeleted',
+        async (mutationClient) => {
+          const updated = await mutationClient[modelKey].update({
+            where: applyActiveWriteFilter(args.where, deletedAtField),
+            data,
+          });
+          if (cascadeHandler) {
+            const pkField = cascadeHandler.findPrimaryKey(model);
+            await cascadeHandler.cascadeSoftDelete(
+              mutationClient,
+              model,
+              updated[pkField],
+              data[deletedAtField] as Date,
+              0,
+              options.auditLifecycle === 'atomic-required'
+                ? (childModel, callback) =>
+                    runAuditLifecycle(
+                      client,
+                      options,
+                      childModel,
+                      'cascadeDelete',
+                      'softDeleted',
+                      callback,
+                    )
+                : undefined,
+            );
+          }
+          return updated;
+        },
+        'delete',
+      );
 
       getEventEmitter()?.emitSoftDeleted(
-        new SoftDeletedEvent(model, args.where, data[deletedAtField] as Date, SoftDeleteContext.getActorId(), 1),
+        new SoftDeletedEvent(
+          model,
+          args.where,
+          data[deletedAtField] as Date,
+          SoftDeleteContext.getActorId(),
+          1,
+        ),
       );
 
       return result;
@@ -256,6 +294,71 @@ export function _buildSoftDeleteQueryHandlers(
 
       const data = buildSoftDeleteData(deletedAtField, deletedByField);
       const modelKey = model.charAt(0).toLowerCase() + model.slice(1);
+
+      if (options.auditLifecycle === 'atomic-required') {
+        const maxRecords = options.auditMaxBatchRecords ?? DEFAULT_AUDIT_MAX_BATCH_RECORDS;
+        const result = await runAuditLifecycle(
+          client,
+          options,
+          model,
+          'deleteMany',
+          'softDeleted',
+          async (tx) => {
+            const activeWhere = applyActiveWriteFilter(args.where, deletedAtField);
+            const records = await tx[modelKey].findMany({
+              where: activeWhere,
+              take: maxRecords + 1,
+            });
+            if (records.length > maxRecords) {
+              throw new Error(
+                `[@nestarc/soft-delete] ${model}.deleteMany exceeds auditMaxBatchRecords (${maxRecords})`,
+              );
+            }
+            const pkField =
+              cascadeHandler?.findPrimaryKey(model) ?? findPrimaryKey(model, relationFilterDmmf);
+            for (const record of records) {
+              await tx[modelKey].update({
+                where: applyActiveWriteFilter(
+                  { ...(args.where ?? {}), [pkField]: record[pkField] },
+                  deletedAtField,
+                ),
+                data,
+              });
+              if (cascadeHandler) {
+                await cascadeHandler.cascadeSoftDelete(
+                  tx,
+                  model,
+                  record[pkField],
+                  data[deletedAtField] as Date,
+                  0,
+                  (childModel, callback) =>
+                    runAuditLifecycle(
+                      client,
+                      options,
+                      childModel,
+                      'cascadeDelete',
+                      'softDeleted',
+                      callback,
+                    ),
+                );
+              }
+            }
+            return { count: records.length };
+          },
+          'deleteMany',
+        );
+
+        getEventEmitter()?.emitSoftDeleted(
+          new SoftDeletedEvent(
+            model,
+            args.where,
+            data[deletedAtField] as Date,
+            SoftDeleteContext.getActorId(),
+            result.count,
+          ),
+        );
+        return result;
+      }
 
       if (cascadeHandler) {
         const pkField = cascadeHandler.findPrimaryKey(model);

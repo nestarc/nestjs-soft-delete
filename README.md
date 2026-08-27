@@ -109,7 +109,7 @@ flowchart LR
 - **`SoftDeleteFilterInterceptor`** reads route metadata (`@WithDeleted`, `@OnlyDeleted`, `@SkipSoftDelete`) and stores the filter mode in `SoftDeleteContext` (an `AsyncLocalStorage` store) for the rest of the async chain.
 - **The Prisma extension** consults `SoftDeleteContext` on every operation: write operations are rewritten to `UPDATE`s setting `deletedAt` (and optionally `deletedBy`), and read operations get a `deletedAt` filter injected.
 - **Cascade** walks the configured parent → children graph using Prisma DMMF metadata, with `maxCascadeDepth` as a safety bound.
-- **Events** fire after each soft-delete / restore / purge for downstream audit, notifications, or replication.
+- **Events** fire after each soft-delete / restore / purge for notifications, cache invalidation, or replication. They are not authoritative audit evidence.
 
 ---
 
@@ -142,6 +142,12 @@ npm install @prisma/adapter-pg pg
 # For lifecycle events
 npm install @nestjs/event-emitter
 
+# For atomic audit lifecycle evidence
+npm install @nestarc/audit-log@^0.4.1
+
+# Optional tenant context and transaction composition
+npm install @nestarc/tenancy@^0.15.0
+
 # For scheduled purge jobs
 npm install @nestjs/schedule
 ```
@@ -162,7 +168,8 @@ covered for the shared extension package boundary:
 
 Node.js `^20.19`, `^22.12`, or `>=24` is required by the Prisma 7 toolchain.
 Cascade and relation filters require explicit DMMF metadata on every supported
-Prisma version.
+Prisma version. The atomic lifecycle bridge is tested against the published
+`@nestarc/audit-log@0.4.1` and `@nestarc/tenancy@0.15.0` packages.
 
 ---
 
@@ -324,6 +331,62 @@ export class UsersController {
 
 ---
 
+## Atomic audit-log integration
+
+For authoritative lifecycle evidence, install `@nestarc/audit-log`, apply extensions in the fixed
+order tenancy → audit-log → soft-delete, and opt into the lifecycle bridge in both the extension and
+module options:
+
+```typescript
+const client = base
+  .$extends(createPrismaTenancyExtension(tenancyService))
+  .$extends(createAuditExtension({
+    consistency: 'atomic-required',
+    trackedModels: ['User', 'Post', 'Comment'],
+    maxBatchRecords: 1000,
+    databaseMapping: {
+      User: { tableName: 'users' },
+      Post: { tableName: 'posts' },
+      Comment: { tableName: 'comments' },
+    },
+    prismaModule,
+  }))
+  .$extends(createPrismaSoftDeleteExtension({
+    softDeleteModels: ['User', 'Post', 'Comment'],
+    auditLifecycle: 'atomic-required',
+    auditMaxBatchRecords: 1000,
+    cascade: { User: ['Post'], Post: ['Comment'] },
+    dmmf: prismaDmmf,
+  }));
+
+await client.withAuditTransaction((tx) =>
+  tx.user.delete({ where: { id } }),
+);
+
+await client.withAuditTransaction(() =>
+  softDeleteService.restore('User', { id }),
+);
+```
+
+Configure the same `auditLifecycle`, `auditMaxBatchRecords`, cascade, and DMMF values on
+`SoftDeleteModule` so `restore()`, `restoreMany()`, `forceDelete()`, and `purge()` use the same
+contract. The bridge requires audit-log 0.4.1's atomic capability handshake; older or best-effort
+clients fail before the lifecycle callback mutates a row. Calls outside `withAuditTransaction()`
+also fail closed. Audit actions are
+`Model.softDeleted`, `Model.restored`, and `Model.purged`. Cascade and supported bulk operations
+write one record-level row per affected record; lifecycle events remain notification-only.
+
+Every soft-delete model, including cascade children, must also be present in audit-log's
+`trackedModels` and `databaseMapping`. Inject the same fully composed client into
+`SoftDeleteModule`; a base or differently composed client cannot join the ambient audit
+transaction. Provide DMMF when audited bulk operations use a primary key other than `id`.
+For the same custom-PK model, also configure audit-log's `primaryKey` map and, when the physical
+table or key column is mapped, its `databaseMapping.tableName` and `primaryKeyColumn` values.
+`auditMaxBatchRecords` caps soft-delete `deleteMany` and `restoreMany`; audit-log's
+`maxBatchRecords` independently caps physical purge (`deleteMany`), so keep the two limits aligned.
+
+---
+
 ## Configuration
 
 All options for `SoftDeleteModule.forRoot()`:
@@ -336,8 +399,10 @@ All options for `SoftDeleteModule.forRoot()`:
 | `actorExtractor` | `(req: any) => string \| null` | `undefined` | Function to extract the actor ID from the incoming request. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map (see Cascade section). |
 | `maxCascadeDepth` | `number` | `3` | Maximum depth for recursive cascade operations. |
-| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata. Required when cascade or relation filters are enabled. |
+| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata. Required for cascade, relation filters, and custom-PK audited bulk operations. |
 | `relationFilters` | `boolean \| { enabled?: boolean; maxDepth?: number }` | `false` | Opt in to active-only filtering for to-many relation `include` / `select` trees. Requires DMMF metadata. |
+| `auditLifecycle` | `'atomic-required'` | `undefined` | Require the `@nestarc/audit-log` same-transaction lifecycle bridge. |
+| `auditMaxBatchRecords` | `number` | `1000` | Maximum rows converted to record-level `deleteMany`/`restoreMany` audit mutations. |
 | `prismaServiceToken` | `any` | — | **Required.** DI token of your `PrismaService`. |
 | `enableEvents` | `boolean` | `false` | Emit lifecycle events. Requires `@nestjs/event-emitter`. |
 
@@ -726,13 +791,17 @@ describe('UsersService', () => {
 The package test suite has two layers:
 
 ```bash
+npm run lint
 npm test
+npm run test:types
 npm run test:e2e
+npm run test:e2e:cross-package
+npm pack --dry-run
 ```
 
-`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, and the full NestJS HTTP stack. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
+`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, the full NestJS HTTP stack, and the atomic bridge against exact published audit-log and tenancy versions from the lockfile. `npm run test:e2e:cross-package` generates the Prisma test client and runs only that public-package composition suite. No sibling repositories are required. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
 
-CI runs lint, unit tests, build, and PostgreSQL E2E tests. Tagged releases also run the PostgreSQL E2E suite before `npm publish`.
+CI runs lint, unit tests, build/public declaration checks, and PostgreSQL E2E tests. Tagged releases run the same published-package PostgreSQL bridge suite before `npm publish`.
 
 ---
 
@@ -822,9 +891,11 @@ void main();
 | `deletedByField` | `string \| null` | `null` | Field to store actor ID. |
 | `cascade` | `Record<string, string[]>` | `undefined` | Parent-to-children cascade map. |
 | `maxCascadeDepth` | `number` | `3` | Maximum cascade depth. |
-| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata. Required when cascade or relation filters are enabled. |
+| `dmmf` | `PrismaDmmfLike` | `undefined` | Explicit Prisma DMMF metadata. Required for cascade, relation filters, and custom-PK audited bulk operations. |
 | `relationFilters` | `boolean \| { enabled?: boolean; maxDepth?: number }` | `false` | Opt in to active-only filtering for to-many relation `include` / `select` trees. |
 | `eventEmitter` | `{ emitSoftDeleted: (event) => void } \| null` | `null` | Optional custom event emitter. |
+| `auditLifecycle` | `'atomic-required'` | `undefined` | Require atomic lifecycle integration with an earlier audit-log extension. |
+| `auditMaxBatchRecords` | `number` | `1000` | Maximum rows converted to record-level lifecycle mutations. |
 
 ---
 
@@ -949,7 +1020,11 @@ Prisma version if you use this metadata path. See [DMMF metadata with Prisma 7](
 <details>
 <summary><b>Do soft-delete operations run inside Prisma transactions?</b></summary>
 
-The extension uses Prisma operations on the same extended client, but standalone soft-delete plus cascade is implemented as multiple Prisma calls and this package does not create an explicit transaction around them. If you need atomic cascade behavior, wrap the relevant work in your own Prisma transaction and verify the behavior for your Prisma version and transaction style.
+Standalone mode does not create a transaction. For authoritative audit evidence, use
+`@nestarc/audit-log` atomic mode, apply extensions in the fixed order tenancy → audit-log →
+soft-delete, configure `auditLifecycle: 'atomic-required'`, and run lifecycle mutations inside
+`withAuditTransaction()`. Soft-delete/restore/purge, their record-level audit rows, and cascade work
+then commit or roll back together. Calls outside the helper fail closed.
 </details>
 
 <details>
@@ -960,9 +1035,12 @@ Events are emitted via `@nestjs/event-emitter`, which is **synchronous by defaul
 ```typescript
 @OnEvent(SoftDeletedEvent.EVENT_NAME, { async: true })
 async onDeleted(event: SoftDeletedEvent) {
-  await this.audit.log(event);
+  await this.notifications.softDeleted(event);
 }
 ```
+
+Events are notification-only and may be observed before an outer transaction commits. Use the
+atomic audit lifecycle bridge, not an event listener, for authoritative evidence.
 </details>
 
 <details>

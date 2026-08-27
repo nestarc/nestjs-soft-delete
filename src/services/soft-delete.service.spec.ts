@@ -47,7 +47,12 @@ describe('SoftDeleteService', () => {
       isEnabled: true,
     };
 
-    service = new SoftDeleteService(defaultOptions, mockPrisma, mockCascadeHandler, mockEventEmitter);
+    service = new SoftDeleteService(
+      defaultOptions,
+      mockPrisma,
+      mockCascadeHandler,
+      mockEventEmitter,
+    );
   });
 
   describe('restoreMany()', () => {
@@ -108,7 +113,12 @@ describe('SoftDeleteService', () => {
     });
 
     it('should update deleted rows without loading records when cascadeHandler is null', async () => {
-      const serviceNoCascade = new SoftDeleteService(defaultOptions, mockPrisma, null, mockEventEmitter);
+      const serviceNoCascade = new SoftDeleteService(
+        defaultOptions,
+        mockPrisma,
+        null,
+        mockEventEmitter,
+      );
       mockPrisma.user.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await serviceNoCascade.restoreMany('User', { where: { role: 'guest' } });
@@ -175,10 +185,10 @@ describe('SoftDeleteService', () => {
 
       expect(result).toEqual(restoredUser);
       expect(mockPrisma.user.findFirst).toHaveBeenCalledWith({
-        where: { id: '1' },
+        where: { id: '1', deletedAt: { not: null } },
       });
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
-        where: { id: '1' },
+        where: { id: '1', deletedAt: deletedDate },
         data: { deletedAt: null, deletedBy: null },
       });
     });
@@ -214,6 +224,7 @@ describe('SoftDeleteService', () => {
         '1',
         deletedDate,
         0,
+        undefined,
       );
     });
 
@@ -238,11 +249,17 @@ describe('SoftDeleteService', () => {
         'abc-123',
         deletedDate,
         0,
+        undefined,
       );
     });
 
     it('should not cascade restore when cascadeHandler is null', async () => {
-      const serviceNoCascade = new SoftDeleteService(defaultOptions, mockPrisma, null, mockEventEmitter);
+      const serviceNoCascade = new SoftDeleteService(
+        defaultOptions,
+        mockPrisma,
+        null,
+        mockEventEmitter,
+      );
       const deletedUser = {
         id: '1',
         name: 'Alice',
@@ -299,7 +316,12 @@ describe('SoftDeleteService', () => {
     });
 
     it('should not throw when eventEmitter is null on restore', async () => {
-      const serviceNoEvents = new SoftDeleteService(defaultOptions, mockPrisma, mockCascadeHandler, null);
+      const serviceNoEvents = new SoftDeleteService(
+        defaultOptions,
+        mockPrisma,
+        mockCascadeHandler,
+        null,
+      );
       const deletedUser = { id: '1', deletedAt: deletedDate };
       const restoredUser = { id: '1', deletedAt: null };
 
@@ -333,6 +355,178 @@ describe('SoftDeleteService', () => {
       await service.forceDelete('User', { id: '1' });
 
       expect(capturedSkipped).toBe(true);
+    });
+  });
+
+  describe('atomic audit lifecycle bridge', () => {
+    const auditOptions: SoftDeleteModuleOptions = {
+      ...defaultOptions,
+      auditLifecycle: 'atomic-required',
+      auditMaxBatchRecords: 2,
+    };
+
+    it('fails before restore mutation when the lifecycle client is unavailable', async () => {
+      const auditService = new SoftDeleteService(auditOptions, mockPrisma, null, null);
+
+      await expect(auditService.restore('User', { id: '1' })).rejects.toThrow(
+        'requires the extension order',
+      );
+      expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('routes restore through lifecycle metadata and guards the captured deletion', async () => {
+      const tx = {
+        user: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: '1',
+            deletedAt: deletedDate,
+          }),
+          update: vi.fn().mockResolvedValue({ id: '1', deletedAt: null }),
+        },
+      };
+      const auditPrisma = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (client: any) => Promise<unknown>) => callback(tx),
+        ),
+      };
+      const auditService = new SoftDeleteService(auditOptions, auditPrisma, null, null);
+
+      await auditService.restore('User', { id: '1' });
+
+      expect(auditPrisma.withAuditLifecycle).toHaveBeenCalledWith(
+        {
+          action: 'User.restored',
+          metadata: {
+            auditKind: 'record',
+            lifecycle: 'soft-delete',
+            lifecycleOperation: 'restore',
+          },
+        },
+        expect.any(Function),
+      );
+      expect(tx.user.update).toHaveBeenCalledWith({
+        where: { id: '1', deletedAt: deletedDate },
+        data: { deletedAt: null, deletedBy: null },
+      });
+    });
+
+    it('uses DMMF primary keys and exact captured deletion guards for restoreMany', async () => {
+      const tx = {
+        user: {
+          findMany: vi.fn().mockResolvedValue([{ uuid: 'user-1', deletedAt: deletedDate }]),
+          update: vi.fn().mockResolvedValue({
+            uuid: 'user-1',
+            deletedAt: null,
+          }),
+        },
+      };
+      const auditPrisma = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (client: any) => Promise<unknown>) => callback(tx),
+        ),
+      };
+      const auditService = new SoftDeleteService(
+        {
+          ...auditOptions,
+          dmmf: {
+            datamodel: {
+              models: [
+                {
+                  name: 'User',
+                  fields: [
+                    {
+                      name: 'uuid',
+                      kind: 'scalar',
+                      type: 'String',
+                      isId: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        auditPrisma,
+        null,
+        null,
+      );
+
+      await auditService.restoreMany('User', { where: { role: 'guest' } });
+
+      expect(tx.user.findMany).toHaveBeenCalledWith({
+        where: { role: 'guest', deletedAt: { not: null } },
+        take: 3,
+      });
+      expect(tx.user.update).toHaveBeenCalledWith({
+        where: { role: 'guest', deletedAt: deletedDate, uuid: 'user-1' },
+        data: { deletedAt: null, deletedBy: null },
+      });
+    });
+
+    it('fails restoreMany before mutation when the audit cap is exceeded', async () => {
+      const tx = {
+        user: {
+          findMany: vi.fn().mockResolvedValue([
+            { id: '1', deletedAt: deletedDate },
+            { id: '2', deletedAt: deletedDate },
+          ]),
+          update: vi.fn(),
+        },
+      };
+      const auditPrisma = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (client: any) => Promise<unknown>) => callback(tx),
+        ),
+      };
+      const auditService = new SoftDeleteService(
+        { ...auditOptions, auditMaxBatchRecords: 1 },
+        auditPrisma,
+        null,
+        null,
+      );
+
+      await expect(auditService.restoreMany('User')).rejects.toThrow(
+        'exceeds auditMaxBatchRecords (1)',
+      );
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid runtime module audit options', () => {
+      expect(
+        () =>
+          new SoftDeleteService(
+            {
+              ...defaultOptions,
+              auditLifecycle: 'best-effort',
+            } as unknown as SoftDeleteModuleOptions,
+            mockPrisma,
+            null,
+            null,
+          ),
+      ).toThrow('auditLifecycle must be "atomic-required"');
+
+      expect(
+        () =>
+          new SoftDeleteService(
+            { ...defaultOptions, auditMaxBatchRecords: Number.NaN },
+            mockPrisma,
+            null,
+            null,
+          ),
+      ).toThrow('auditMaxBatchRecords must be a positive integer');
     });
   });
 
@@ -389,7 +583,7 @@ describe('SoftDeleteService', () => {
       await svc.restore('User', { id: '1' });
 
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
-        where: { id: '1' },
+        where: { id: '1', deletedAt: deletedDate },
         data: { deletedAt: null },
       });
     });

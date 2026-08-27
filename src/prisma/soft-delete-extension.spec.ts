@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { _buildSoftDeleteQueryHandlers, createPrismaSoftDeleteExtension } from './soft-delete-extension';
+import {
+  _buildSoftDeleteQueryHandlers,
+  createPrismaSoftDeleteExtension,
+} from './soft-delete-extension';
 import { SoftDeleteContext } from '../services/soft-delete-context';
 import type { SoftDeleteExtensionOptions } from '../interfaces/soft-delete-options.interface';
-import { resetRegisteredSoftDeleteEventEmitter, SoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
+import {
+  resetRegisteredSoftDeleteEventEmitter,
+  SoftDeleteEventEmitter,
+} from '../events/soft-delete-event-emitter';
 import { CascadeDmmfMissingError } from '../errors/cascade-dmmf-missing.error';
 
 /**
@@ -78,7 +84,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       // Should call update on the client
       expect(client.user.update).toHaveBeenCalledTimes(1);
       const updateCall = client.user.update.mock.calls[0][0];
-      expect(updateCall.where).toEqual({ id: 1 });
+      expect(updateCall.where).toEqual({ id: 1, deletedAt: null });
       expect(updateCall.data.deletedAt).toBeInstanceOf(Date);
     });
 
@@ -103,17 +109,14 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       const client = createMockClient('User');
       const query = createMockQuery();
 
-      await SoftDeleteContext.run(
-        { filterMode: 'default', skipSoftDelete: true },
-        async () => {
-          await handlers.delete({
-            model: 'User',
-            args: { where: { id: 1 } },
-            query,
-            client,
-          });
-        },
-      );
+      await SoftDeleteContext.run({ filterMode: 'default', skipSoftDelete: true }, async () => {
+        await handlers.delete({
+          model: 'User',
+          args: { where: { id: 1 } },
+          query,
+          client,
+        });
+      });
 
       expect(query).toHaveBeenCalledWith({ where: { id: 1 } });
       expect(client.user.update).not.toHaveBeenCalled();
@@ -303,17 +306,14 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       const client = createMockClient('Post');
       const query = createMockQuery();
 
-      await SoftDeleteContext.run(
-        { filterMode: 'default', skipSoftDelete: true },
-        async () => {
-          await handlers.deleteMany({
-            model: 'Post',
-            args: { where: { authorId: 1 } },
-            query,
-            client,
-          });
-        },
-      );
+      await SoftDeleteContext.run({ filterMode: 'default', skipSoftDelete: true }, async () => {
+        await handlers.deleteMany({
+          model: 'Post',
+          args: { where: { authorId: 1 } },
+          query,
+          client,
+        });
+      });
 
       expect(query).toHaveBeenCalledWith({ where: { authorId: 1 } });
       expect(client.post.updateMany).not.toHaveBeenCalled();
@@ -456,16 +456,13 @@ describe('_buildSoftDeleteQueryHandlers', () => {
     it('should not filter when SoftDeleteContext.isSkipped() is true', async () => {
       const query = createMockQuery();
 
-      await SoftDeleteContext.run(
-        { filterMode: 'default', skipSoftDelete: true },
-        async () => {
-          await handlers.findMany({
-            model: 'User',
-            args: { where: { name: 'Alice' } },
-            query,
-          });
-        },
-      );
+      await SoftDeleteContext.run({ filterMode: 'default', skipSoftDelete: true }, async () => {
+        await handlers.findMany({
+          model: 'User',
+          args: { where: { name: 'Alice' } },
+          query,
+        });
+      });
 
       expect(query).toHaveBeenCalledWith({ where: { name: 'Alice' } });
     });
@@ -850,10 +847,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
       const query = createMockQuery();
 
       // findMany returns 2 users to be deleted
-      client.user.findMany.mockResolvedValueOnce([
-        { id: 'user-1' },
-        { id: 'user-2' },
-      ]);
+      client.user.findMany.mockResolvedValueOnce([{ id: 'user-1' }, { id: 'user-2' }]);
 
       await cascadeHandlers.deleteMany({
         model: 'User',
@@ -974,6 +968,233 @@ describe('_buildSoftDeleteQueryHandlers', () => {
           deletedAt: expect.any(Date),
         },
       });
+    });
+  });
+
+  describe('atomic audit lifecycle bridge', () => {
+    const auditOptions: SoftDeleteExtensionOptions = {
+      softDeleteModels: ['User'],
+      auditLifecycle: 'atomic-required',
+      auditMaxBatchRecords: 2,
+    };
+
+    it('fails before mutation when the audit lifecycle client is unavailable', async () => {
+      const auditHandlers = _buildSoftDeleteQueryHandlers(auditOptions);
+      const client = createMockClient('User');
+
+      await expect(
+        auditHandlers.delete({
+          model: 'User',
+          args: { where: { id: 'user-1' } },
+          query: createMockQuery(),
+          client,
+        }),
+      ).rejects.toThrow('requires the extension order');
+      expect(client.user.update).not.toHaveBeenCalled();
+    });
+
+    it('routes delete through the transaction client with outer suppression metadata', async () => {
+      const auditHandlers = _buildSoftDeleteQueryHandlers(auditOptions);
+      const tx = createMockClient('User');
+      const client = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (tx: any) => Promise<unknown>) => callback(tx),
+        ),
+      };
+
+      await auditHandlers.delete({
+        model: 'User',
+        args: { where: { id: 'user-1' } },
+        query: createMockQuery(),
+        client,
+      });
+
+      expect(client.withAuditLifecycle).toHaveBeenCalledWith(
+        {
+          action: 'User.softDeleted',
+          metadata: {
+            auditKind: 'record',
+            lifecycle: 'soft-delete',
+            lifecycleOperation: 'delete',
+          },
+          suppressOuterOperation: { model: 'User', operation: 'delete' },
+        },
+        expect.any(Function),
+      );
+      expect(tx.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('fails a deleteMany batch before mutation when the cap is exceeded', async () => {
+      const auditHandlers = _buildSoftDeleteQueryHandlers({
+        ...auditOptions,
+        auditMaxBatchRecords: 1,
+      });
+      const tx = {
+        user: {
+          findMany: vi.fn().mockResolvedValue([{ id: '1' }, { id: '2' }]),
+          update: vi.fn(),
+        },
+      };
+      const client = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (tx: any) => Promise<unknown>) => callback(tx),
+        ),
+      };
+
+      await expect(
+        auditHandlers.deleteMany({
+          model: 'User',
+          args: { where: { role: 'guest' } },
+          query: createMockQuery(),
+          client,
+        }),
+      ).rejects.toThrow('exceeds auditMaxBatchRecords (1)');
+      expect(tx.user.update).not.toHaveBeenCalled();
+    });
+
+    it('uses DMMF primary keys and keeps the active-row guard for deleteMany', async () => {
+      const auditHandlers = _buildSoftDeleteQueryHandlers({
+        ...auditOptions,
+        dmmf: {
+          datamodel: {
+            models: [
+              {
+                name: 'User',
+                fields: [{ name: 'uuid', kind: 'scalar', type: 'String', isId: true }],
+              },
+            ],
+          },
+        },
+      });
+      const tx = {
+        user: {
+          findMany: vi.fn().mockResolvedValue([{ uuid: 'user-1' }]),
+          update: vi.fn().mockResolvedValue({ uuid: 'user-1' }),
+        },
+      };
+      const client = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (tx: any) => Promise<unknown>) => callback(tx),
+        ),
+      };
+
+      await auditHandlers.deleteMany({
+        model: 'User',
+        args: { where: { role: 'guest' } },
+        query: createMockQuery(),
+        client,
+      });
+
+      expect(tx.user.update).toHaveBeenCalledWith({
+        where: { role: 'guest', uuid: 'user-1', deletedAt: null },
+        data: { deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('emits the bulk notification after leaving the lifecycle context', async () => {
+      let lifecycleActive = false;
+      const emitter = {
+        emitSoftDeleted: vi.fn(() => {
+          expect(lifecycleActive).toBe(false);
+        }),
+      };
+      const auditHandlers = _buildSoftDeleteQueryHandlers({
+        ...auditOptions,
+        eventEmitter: emitter,
+      });
+      const tx = {
+        user: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'user-1' }]),
+          update: vi.fn().mockResolvedValue({ id: 'user-1' }),
+        },
+      };
+      const client = {
+        getAuditCapabilities: vi.fn(() => ({
+          consistency: 'atomic-required',
+          atomicLifecycle: true,
+        })),
+        withAuditLifecycle: vi.fn(
+          async (_input: unknown, callback: (tx: any) => Promise<unknown>) => {
+            lifecycleActive = true;
+            try {
+              return await callback(tx);
+            } finally {
+              lifecycleActive = false;
+            }
+          },
+        ),
+      };
+
+      await auditHandlers.deleteMany({
+        model: 'User',
+        args: { where: {} },
+        query: createMockQuery(),
+        client,
+      });
+
+      expect(emitter.emitSoftDeleted).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects legacy and best-effort audit clients before mutation', async () => {
+      const auditHandlers = _buildSoftDeleteQueryHandlers(auditOptions);
+      const lifecycle = vi.fn();
+
+      await expect(
+        auditHandlers.delete({
+          model: 'User',
+          args: { where: { id: 'legacy' } },
+          query: createMockQuery(),
+          client: { withAuditLifecycle: lifecycle },
+        }),
+      ).rejects.toThrow('requires @nestarc/audit-log >=0.4.1');
+      expect(lifecycle).not.toHaveBeenCalled();
+
+      await expect(
+        auditHandlers.delete({
+          model: 'User',
+          args: { where: { id: 'best-effort' } },
+          query: createMockQuery(),
+          client: {
+            getAuditCapabilities: () => ({
+              consistency: 'best-effort',
+              atomicLifecycle: false,
+            }),
+            withAuditLifecycle: lifecycle,
+          },
+        }),
+      ).rejects.toThrow('requires audit-log consistency: "atomic-required"');
+      expect(lifecycle).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid runtime audit options', () => {
+      expect(() =>
+        _buildSoftDeleteQueryHandlers({
+          softDeleteModels: ['User'],
+          auditLifecycle: 'best-effort',
+        } as unknown as SoftDeleteExtensionOptions),
+      ).toThrow('auditLifecycle must be "atomic-required"');
+
+      expect(() =>
+        _buildSoftDeleteQueryHandlers({
+          softDeleteModels: ['User'],
+          auditMaxBatchRecords: 0,
+        }),
+      ).toThrow('auditMaxBatchRecords must be a positive integer');
     });
   });
 
