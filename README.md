@@ -142,7 +142,7 @@ npm install @prisma/adapter-pg pg
 # For lifecycle events
 npm install @nestjs/event-emitter
 
-# For atomic audit lifecycle evidence
+# For atomic audit lifecycle evidence (0.5.x is also accepted once published)
 npm install @nestarc/audit-log@^0.4.1
 
 # Optional tenant context and transaction composition
@@ -168,8 +168,10 @@ covered for the shared extension package boundary:
 
 Node.js `^20.19`, `^22.12`, or `>=24` is required by the Prisma 7 toolchain.
 Cascade and relation filters require explicit DMMF metadata on every supported
-Prisma version. The atomic lifecycle bridge is tested against the published
-`@nestarc/audit-log@0.4.1` and `@nestarc/tenancy@0.15.0` packages.
+Prisma version. The atomic lifecycle bridge accepts audit-log `^0.4.1 || ^0.5.0` and uses the same
+capability handshake on both lines. The published-package baseline remains
+`@nestarc/audit-log@0.4.1` with `@nestarc/tenancy@0.15.0`; coordinated audit-log candidates are
+verified through the consumer-owned audit-log ecosystem release gate.
 
 ---
 
@@ -370,9 +372,9 @@ await client.withAuditTransaction(() =>
 
 Configure the same `auditLifecycle`, `auditMaxBatchRecords`, cascade, and DMMF values on
 `SoftDeleteModule` so `restore()`, `restoreMany()`, `forceDelete()`, and `purge()` use the same
-contract. The bridge requires audit-log 0.4.1's atomic capability handshake; older or best-effort
-clients fail before the lifecycle callback mutates a row. Calls outside `withAuditTransaction()`
-also fail closed. Audit actions are
+contract. The bridge requires the atomic capability handshake introduced in audit-log 0.4.1 and
+accepts the `^0.4.1` and `^0.5.0` lines; older or best-effort clients fail before the lifecycle
+callback mutates a row. Calls outside `withAuditTransaction()` also fail closed. Audit actions are
 `Model.softDeleted`, `Model.restored`, and `Model.purged`. Cascade and supported bulk operations
 write one record-level row per affected record; lifecycle events remain notification-only.
 
