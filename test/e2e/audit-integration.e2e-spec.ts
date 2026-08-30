@@ -5,7 +5,11 @@ import { createPrismaSoftDeleteExtension } from '../../src/prisma/soft-delete-ex
 import { CascadeHandler } from '../../src/prisma/cascade-handler';
 import { SoftDeleteService } from '../../src/services/soft-delete.service';
 import { createAuditExtension, applyAuditTableSchema } from '@nestarc/audit-log';
-import { createPrismaTenancyExtension, TenancyContext } from '@nestarc/tenancy';
+import {
+  createPrismaTenancyExtension,
+  TenancyContext,
+  TenancyService,
+} from '@nestarc/tenancy';
 
 const trackedModels = ['User', 'Post', 'Comment', 'AccessKey'];
 const databaseMapping = {
@@ -30,11 +34,8 @@ const moduleOptions = {
 describe('tenancy + audit-log + soft-delete atomic integration E2E', () => {
   const base = createBasePrisma();
   const tenancyContext = new TenancyContext();
-  const tenancyService = {
-    getCurrentTenant: () => tenancyContext.getTenantId(),
-    isTenantBypassed: () => tenancyContext.isBypassed(),
-  };
-  const tenancy = createPrismaTenancyExtension(tenancyService as any, {
+  const tenancyService = new TenancyService(tenancyContext);
+  const tenancy = createPrismaTenancyExtension(tenancyService, {
     interactiveTransactionSupport: true,
     failClosed: true,
   });

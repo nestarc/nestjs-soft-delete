@@ -4,6 +4,15 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.2] - 2026-08-30
+
+### Changed
+
+- Extend the optional `@nestarc/tenancy` peer range to `^0.15.0 || ^0.16.0` after
+  strict packed-candidate installation and PostgreSQL composition coverage.
+- Add a reusable candidate runner and exact Node.js 22.13/current 24 workflow so
+  tenancy's 0.16 runtime floor is verified without force or legacy peer bypasses.
+
 ## [0.7.1] - 2026-08-28
 
 ### Changed

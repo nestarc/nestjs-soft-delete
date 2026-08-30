@@ -146,7 +146,7 @@ npm install @nestjs/event-emitter
 npm install @nestarc/audit-log@^0.4.1
 
 # Optional tenant context and transaction composition
-npm install @nestarc/tenancy@^0.15.0
+npm install @nestarc/tenancy@^0.16.0
 
 # For scheduled purge jobs
 npm install @nestjs/schedule
@@ -167,6 +167,9 @@ covered for the shared extension package boundary:
 | 24 | 11 | 7 | lint, unit tests, build, PostgreSQL E2E |
 
 Node.js `^20.19`, `^22.12`, or `>=24` is required by the Prisma 7 toolchain.
+The optional tenancy integration accepts tenancy 0.15.x and 0.16.x. Tenancy
+0.16.x itself requires Node.js `^22.13.0 || ^24.0.0`; Node.js 20 consumers can
+continue to use soft-delete without tenancy or with tenancy 0.15.x.
 Cascade and relation filters require explicit DMMF metadata on every supported
 Prisma version. The atomic lifecycle bridge accepts audit-log `^0.4.1 || ^0.5.0` and uses the same
 capability handshake on both lines. The published-package baseline remains
@@ -801,9 +804,9 @@ npm run test:e2e:cross-package
 npm pack --dry-run
 ```
 
-`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, the full NestJS HTTP stack, and the atomic bridge against exact published audit-log and tenancy versions from the lockfile. `npm run test:e2e:cross-package` generates the Prisma test client and runs only that public-package composition suite. No sibling repositories are required. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
+`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, the full NestJS HTTP stack, and the atomic bridge against exact published audit-log and tenancy versions from the lockfile. `npm run test:e2e:cross-package` generates the Prisma test client and runs only that public-package composition suite. Before a tenancy minor is published, `npm run test:e2e:tenancy-candidate -- --tenancy-tarball /absolute/path/to/candidate.tgz` installs that explicit artifact with strict peer resolution in an isolated checkout, runs the cross-package PostgreSQL E2E, packs soft-delete, and verifies both packages again in a fresh consumer. No sibling repositories are auto-discovered. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
 
-CI runs lint, unit tests, build/public declaration checks, and PostgreSQL E2E tests. Tagged releases run the same published-package PostgreSQL bridge suite before `npm publish`.
+CI runs lint, unit tests, build/public declaration checks, and PostgreSQL E2E tests. The manually dispatched tenancy-candidate workflow runs the packed candidate contract on exact Node.js 22.13 and current Node.js 24 without peer bypass flags. Tagged releases run the same published-package PostgreSQL bridge suite before `npm publish`.
 
 ---
 

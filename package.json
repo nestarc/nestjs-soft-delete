@@ -1,6 +1,6 @@
 {
   "name": "@nestarc/soft-delete",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Prisma soft-delete extension for NestJS with automatic query filtering, cascade support, and restore API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -27,6 +27,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "pretest:e2e:cross-package": "prisma generate --schema=test/prisma/schema.prisma",
     "test:e2e:cross-package": "vitest run --config vitest.e2e.config.ts test/e2e/audit-integration.e2e-spec.ts",
+    "test:e2e:tenancy-candidate": "node scripts/test-tenancy-candidate.js",
     "test:types": "npm run build && tsc -p tsconfig.public-types.json",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\""
@@ -36,7 +37,7 @@
   },
   "peerDependencies": {
     "@nestarc/audit-log": "^0.4.1 || ^0.5.0",
-    "@nestarc/tenancy": "^0.15.0",
+    "@nestarc/tenancy": "^0.15.0 || ^0.16.0",
     "@nestjs/common": "^10.0.0 || ^11.0.0",
     "@nestjs/core": "^10.0.0 || ^11.0.0",
     "@nestjs/event-emitter": "^2.0.0 || ^3.0.0",
