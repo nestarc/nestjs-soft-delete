@@ -171,8 +171,8 @@ The optional tenancy integration accepts tenancy 0.15.x and 0.16.x. Tenancy
 0.16.x itself requires Node.js `^22.13.0 || ^24.0.0`; Node.js 20 consumers can
 continue to use soft-delete without tenancy or with tenancy 0.15.x.
 Cascade and relation filters require explicit DMMF metadata on every supported
-Prisma version. The atomic lifecycle bridge accepts audit-log `^0.4.1 || ^0.5.0` and uses the same
-capability handshake on both lines. The published-package baseline remains
+Prisma version. The atomic lifecycle bridge accepts audit-log `^0.4.1 || ^0.5.0 || ^0.6.0` and uses the same
+capability handshake on all supported lines. The published-package baseline remains
 `@nestarc/audit-log@0.4.1` with `@nestarc/tenancy@0.15.0`; coordinated audit-log candidates are
 verified through the consumer-owned audit-log ecosystem release gate.
 
@@ -376,7 +376,7 @@ await client.withAuditTransaction(() =>
 Configure the same `auditLifecycle`, `auditMaxBatchRecords`, cascade, and DMMF values on
 `SoftDeleteModule` so `restore()`, `restoreMany()`, `forceDelete()`, and `purge()` use the same
 contract. The bridge requires the atomic capability handshake introduced in audit-log 0.4.1 and
-accepts the `^0.4.1` and `^0.5.0` lines; older or best-effort clients fail before the lifecycle
+accepts the `^0.4.1`, `^0.5.0`, and `^0.6.0` lines; older or best-effort clients fail before the lifecycle
 callback mutates a row. Calls outside `withAuditTransaction()` also fail closed. Audit actions are
 `Model.softDeleted`, `Model.restored`, and `Model.purged`. Cascade and supported bulk operations
 write one record-level row per affected record; lifecycle events remain notification-only.

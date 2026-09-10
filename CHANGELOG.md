@@ -4,6 +4,13 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.3] - 2026-09-10
+
+### Changed
+
+- Extend the optional `@nestarc/audit-log` peer range to `^0.4.1 || ^0.5.0 || ^0.6.0`.
+  This updates compatibility metadata without changing soft-delete runtime behavior.
+
 ## [0.7.2] - 2026-08-30
 
 ### Changed
