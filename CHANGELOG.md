@@ -4,6 +4,16 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.4] - 2026-09-29
+
+### Changed
+
+- Extend the optional `@nestarc/audit-log` peer range to `^0.4.1 || ^0.5.0 || ^0.6.0 || ^0.7.0`.
+  The atomic lifecycle bridge continues to use the same capability handshake and transaction
+  contract; soft-delete runtime behavior and the exact published development baseline are unchanged.
+- Validate the 0.7.0 audit-log candidate with public type checks, 14 PostgreSQL bridge tests,
+  and a strict dual-tarball consumer covering commit/rollback, cascade restore, and purge evidence.
+
 ## [0.7.3] - 2026-09-10
 
 ### Changed

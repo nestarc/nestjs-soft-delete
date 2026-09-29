@@ -171,10 +171,11 @@ The optional tenancy integration accepts tenancy 0.15.x and 0.16.x. Tenancy
 0.16.x itself requires Node.js `^22.13.0 || ^24.0.0`; Node.js 20 consumers can
 continue to use soft-delete without tenancy or with tenancy 0.15.x.
 Cascade and relation filters require explicit DMMF metadata on every supported
-Prisma version. The atomic lifecycle bridge accepts audit-log `^0.4.1 || ^0.5.0 || ^0.6.0` and uses the same
+Prisma version. The atomic lifecycle bridge accepts audit-log `^0.4.1 || ^0.5.0 || ^0.6.0 || ^0.7.0` and uses the same
 capability handshake on all supported lines. The published-package baseline remains
 `@nestarc/audit-log@0.4.1` with `@nestarc/tenancy@0.15.0`; coordinated audit-log candidates are
-verified through the consumer-owned audit-log ecosystem release gate.
+verified through the consumer-owned audit-log ecosystem release gate. Audit-log 0.7 support is
+added in soft-delete **0.7.4**.
 
 ---
 
