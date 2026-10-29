@@ -32,3 +32,6 @@ coverage/
 
 # Local git worktrees
 .worktrees/
+
+# Local documentation
+/docs/

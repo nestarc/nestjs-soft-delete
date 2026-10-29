@@ -882,8 +882,28 @@ CREATE UNIQUE INDEX users_email_active_unique
   WHERE "deletedAt" IS NULL;
 ```
 
-For full PostgreSQL, SQLite, and MySQL recipes, see
-[`docs/recipes/unique-constraints.md`](docs/recipes/unique-constraints.md).
+Use the mapped table and column names when your schema uses `@@map` or `@map`, such as `users`, `email`, and `deleted_at`.
+
+SQLite also supports a partial unique index:
+
+```sql
+CREATE UNIQUE INDEX users_email_active_unique
+  ON User (email)
+  WHERE deletedAt IS NULL;
+```
+
+For MySQL, use a generated column populated only for active rows:
+
+```sql
+ALTER TABLE users
+  ADD active_email VARCHAR(255)
+    GENERATED ALWAYS AS (
+      CASE WHEN deleted_at IS NULL THEN email ELSE NULL END
+    ) STORED,
+  ADD UNIQUE INDEX users_active_email_unique (active_email);
+```
+
+Keep the field in your Prisma model and add the database-specific index in a SQL migration. Verify that a second active row with the same value is rejected, then soft-delete the first row and confirm the value can be reused. Normal active-only reads should return only the new active row.
 
 Avoid relying on `@@unique([email, deletedAt])`: in databases where `NULL` values are treated as distinct, that composite index can allow multiple active rows with the same email because active rows all have `deletedAt = NULL`.
 

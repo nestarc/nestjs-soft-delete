@@ -90,7 +90,6 @@
   "files": [
     "CHANGELOG.md",
     "dist",
-    "docs/recipes",
     "!dist/.tsbuildinfo"
   ],
   "keywords": [
