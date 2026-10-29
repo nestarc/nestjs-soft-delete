@@ -734,55 +734,111 @@ await this.softDelete.purge('Post', {
 
 ## Testing
 
-Import `TestSoftDeleteModule` from `@nestarc/soft-delete/testing` in your unit or integration tests.
+### Testing entry points in 0.7.5
+
+Version 0.7.5 fixes the packed root/testing boundary: matching CommonJS entry points share their service classes, injection tokens, event emitter and context store, and matching ESM entry points share theirs. Load both entry points with the same module system (`require()` for both, or `import` for both); this does not establish identity between a CommonJS root and an ESM testing entry point.
+
+`TestSoftDeleteModule.register()` now creates the same cascade handler as the production module when `cascade` is configured. Supply the same cascade options and explicit DMMF to the extension and the testing module; missing DMMF fails during module initialization. The module remains a lightweight service fixture, without the production module's HTTP middleware or interceptor.
+
+The example below targets the **0.7.5** build. The earlier **0.7.4** npm tarball bundles separate root/testing service tokens and context stores and does not install a cascade handler in `TestSoftDeleteModule`. If you still use 0.7.4, use `SoftDeleteModule` for integration fixtures and query unextended Prisma delegates when asserting deleted rows.
+
+### Integration example
+
+Use an isolated PostgreSQL test database with `User` and `Post` models that have `deletedAt`, a `Post.authorId` relation to `User`, and the fields used below. Prepare `prismaDmmf` from that schema as described in [DMMF metadata](#dmmf-metadata-with-prisma-7). Each test creates its own rows and deletes only those fixtures afterward.
 
 ```typescript
-import { Test } from '@nestjs/testing';
-import { TestSoftDeleteModule, expectSoftDeleted, expectNotSoftDeleted, expectCascadeSoftDeleted } from '@nestarc/soft-delete/testing';
-import { SoftDeleteService } from '@nestarc/soft-delete';
-import { createPrismaSoftDeleteExtension } from '@nestarc/soft-delete';
+import { randomUUID } from 'node:crypto';
+import { Test, type TestingModule } from '@nestjs/testing';
+import {
+  TestSoftDeleteModule,
+  expectSoftDeleted,
+  expectNotSoftDeleted,
+  expectCascadeSoftDeleted,
+} from '@nestarc/soft-delete/testing';
+import {
+  SoftDeleteService,
+  createPrismaSoftDeleteExtension,
+} from '@nestarc/soft-delete';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from './generated/prisma/client';
+import { prismaDmmf } from './prisma.dmmf';
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const basePrisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.TEST_DATABASE_URL! }),
+});
+const options = {
+  softDeleteModels: ['User', 'Post'],
+  cascade: { User: ['Post'] },
+  dmmf: prismaDmmf,
+};
+const prisma = basePrisma.$extends(createPrismaSoftDeleteExtension(options));
 
 describe('UsersService', () => {
+  let module: TestingModule;
   let softDelete: SoftDeleteService;
-  let prisma: any; // your extended PrismaClient in tests
+  let userId: string;
+  let postIds: string[];
 
   beforeAll(async () => {
-    prisma = new PrismaClient({ adapter }).$extends(
-      createPrismaSoftDeleteExtension({ softDeleteModels: ['User', 'Post'] }),
-    );
-
-    const module = await Test.createTestingModule({
-      imports: [
-        TestSoftDeleteModule.register(
-          { softDeleteModels: ['User', 'Post'] },
-          prisma,
-        ),
-      ],
+    module = await Test.createTestingModule({
+      imports: [TestSoftDeleteModule.register(options, prisma)],
     }).compile();
-
     softDelete = module.get(SoftDeleteService);
   });
 
-  it('soft-deletes a user', async () => {
-    await prisma.user.delete({ where: { id: 1 } });
-    await expectSoftDeleted(prisma.user, { id: 1 });
+  beforeEach(async () => {
+    userId = randomUUID();
+    await basePrisma.user.create({
+      data: { id: userId, email: `${userId}@example.test`, name: 'Test user' },
+    });
+    const posts = await Promise.all(['First', 'Second'].map((title) =>
+      basePrisma.post.create({ data: { title, authorId: userId } }),
+    ));
+    postIds = posts.map((post) => post.id);
   });
 
-  it('restores a user', async () => {
-    await softDelete.restore('User', { id: 1 });
-    await expectNotSoftDeleted(prisma.user, { id: 1 });
+  afterEach(async () => {
+    // Use the unextended client to remove this test's active or deleted rows.
+    if (!userId) return;
+    await basePrisma.post.deleteMany({ where: { authorId: userId } });
+    await basePrisma.user.deleteMany({ where: { id: userId } });
   });
 
-  it('cascades soft-delete to posts', async () => {
-    await prisma.user.delete({ where: { id: 2 } });
-    await expectCascadeSoftDeleted(prisma, 'User', { id: 2 }, ['Post']);
+  afterAll(async () => {
+    try {
+      await module?.close();
+    } finally {
+      await basePrisma.$disconnect();
+    }
+  });
+
+  it('soft-deletes and restores the same fixture', async () => {
+    await prisma.user.delete({ where: { id: userId } });
+    await expectSoftDeleted(prisma.user, { id: userId });
+
+    await softDelete.restore('User', { id: userId });
+    await expectNotSoftDeleted(prisma.user, { id: userId });
+    for (const id of postIds) {
+      await expectNotSoftDeleted(prisma.post, { id });
+    }
+  });
+
+  it('cascades to every expected child', async () => {
+    await prisma.user.delete({ where: { id: userId } });
+    await expectCascadeSoftDeleted(prisma, 'User', { id: userId }, ['Post']);
+
+    // The generic assertion does not prove that all related children were deleted.
+    for (const id of postIds) {
+      await expectSoftDeleted(prisma.post, { id });
+    }
+    const children = await basePrisma.post.findMany({ where: { authorId: userId } });
+    expect(children.map((post) => post.id).sort()).toEqual([...postIds].sort());
+    expect(children.every((post) => post.deletedAt !== null)).toBe(true);
   });
 });
 ```
+
+`expectSoftDeleted()` and `expectCascadeSoftDeleted()` set the shared filter context around their reads, so matching-format imports can use extended delegates. These helpers do not seed fixtures or install database isolation. Keep unrelated active rows in a broader integration suite to check that the cascade does not affect another parent.
 
 ### Assertion helpers
 
@@ -790,24 +846,27 @@ describe('UsersService', () => {
 |---|---|
 | `expectSoftDeleted(delegate, where, deletedAtField?)` | Asserts the record exists and `deletedAt` is non-null. |
 | `expectNotSoftDeleted(delegate, where, deletedAtField?)` | Asserts the record exists and `deletedAt` is null. |
-| `expectCascadeSoftDeleted(prisma, parentModel, where, childModels, deletedAtField?)` | Asserts the parent and all listed child models have soft-deleted records. |
+| `expectCascadeSoftDeleted(prisma, parentModel, where, childModels, deletedAtField?)` | Asserts the selected parent is deleted and each named child model has at least one deleted row. It does not check foreign keys or every expected child; assert those fixtures separately. |
 
 ### Project validation
 
-The package test suite has two layers:
+Run source checks and packed-consumer checks separately:
 
 ```bash
 npm run lint
 npm test
 npm run test:types
+npm run test:consumer:testing
 npm run test:e2e
 npm run test:e2e:cross-package
 npm pack --dry-run
 ```
 
-`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, the full NestJS HTTP stack, and the atomic bridge against exact published audit-log and tenancy versions from the lockfile. `npm run test:e2e:cross-package` generates the Prisma test client and runs only that public-package composition suite. Before a tenancy minor is published, `npm run test:e2e:tenancy-candidate -- --tenancy-tarball /absolute/path/to/candidate.tgz` installs that explicit artifact with strict peer resolution in an isolated checkout, runs the cross-package PostgreSQL E2E, packs soft-delete, and verifies both packages again in a fresh consumer. No sibling repositories are auto-discovered. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
+`npm test` covers the unit-level module, context, extension, cascade, event, and testing-helper behavior. `npm run test:consumer:testing` builds and packs the package, then checks the installed root/testing service identity, shared context, and cascade setup for matching CommonJS and ESM consumers. Source imports alone cannot verify that npm packaging preserves these identities.
 
-CI runs lint, unit tests, build/public declaration checks, and PostgreSQL E2E tests. The manually dispatched tenancy-candidate workflow runs the packed candidate contract on exact Node.js 22.13 and current Node.js 24 without peer bypass flags. Tagged releases run the same published-package PostgreSQL bridge suite before `npm publish`.
+`npm run test:e2e` runs against PostgreSQL and covers cascade soft-delete, cascade restore, purge, lifecycle events, the full NestJS HTTP stack, and the atomic bridge against exact published audit-log and tenancy versions from the lockfile. `npm run test:e2e:cross-package` generates the Prisma test client and runs only that public-package composition suite. Before a tenancy minor is published, `npm run test:e2e:tenancy-candidate -- --tenancy-tarball /absolute/path/to/candidate.tgz` installs that explicit artifact with strict peer resolution in an isolated checkout, runs the cross-package PostgreSQL E2E, packs soft-delete, and verifies both packages again in a fresh consumer. No sibling repositories are auto-discovered. The E2E suite creates its tables with raw SQL and runs files serially because each file shares the same test database.
+
+CI runs lint, unit tests, build/public declaration checks, the packed testing-consumer regression, and PostgreSQL E2E tests. The manually dispatched tenancy-candidate workflow runs the packed candidate contract on exact Node.js 22.13 and current Node.js 24 without peer bypass flags. Tagged releases run the same published-package PostgreSQL bridge suite before `npm publish`.
 
 ---
 
@@ -1119,10 +1178,10 @@ await this.softDelete.onlyDeleted(() => this.prisma.client.user.findMany());
 
 | Export | Kind | Description |
 |---|---|---|
-| `TestSoftDeleteModule` | Module | Lightweight test module. Use `.register(options, prisma?)`. |
+| `TestSoftDeleteModule` | Module | Lightweight service fixture. Version 0.7.5 shares matching-format runtime identity and creates configured cascade handlers; see [Testing](#testing) for configuration requirements and the 0.7.4 workaround. |
 | `expectSoftDeleted` | Function | Assert a record is soft-deleted. |
 | `expectNotSoftDeleted` | Function | Assert a record is not soft-deleted. |
-| `expectCascadeSoftDeleted` | Function | Assert a parent and its children are all soft-deleted. |
+| `expectCascadeSoftDeleted` | Function | Assert the selected parent and some deleted rows in each child model; verify all expected relationships separately. |
 
 ---
 

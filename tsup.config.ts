@@ -7,7 +7,8 @@ export default defineConfig({
   },
   format: ['cjs', 'esm'],
   dts: true,
-  splitting: false,
+  // Root and /testing must share class tokens and the AsyncLocalStorage instance.
+  splitting: true,
   sourcemap: true,
   clean: true,
   external: [

@@ -1,27 +1,34 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Test } from '@nestjs/testing';
 import { TestSoftDeleteModule } from './test-soft-delete.module';
 import { expectSoftDeleted, expectNotSoftDeleted } from './expect-soft-deleted';
 import { SoftDeleteService } from '../services/soft-delete.service';
 import { SoftDeleteEventEmitter } from '../events/soft-delete-event-emitter';
-import { CascadeHandler } from '../prisma/cascade-handler';
-import { SOFT_DELETE_MODULE_OPTIONS } from '../soft-delete.constants';
+import { SOFT_DELETE_MODULE_OPTIONS, SOFT_DELETE_PRISMA_SERVICE } from '../soft-delete.constants';
+import { CascadeDmmfMissingError } from '../errors/cascade-dmmf-missing.error';
 
 describe('TestSoftDeleteModule', () => {
-  it('should return a DynamicModule from register()', () => {
-    const result = TestSoftDeleteModule.register({
-      softDeleteModels: ['User', 'Post'],
-    });
+  it('provides the root service, tokens, and event emitter without cascade metadata', async () => {
+    const prisma = {};
+    const module = await Test.createTestingModule({
+      imports: [TestSoftDeleteModule.register({ softDeleteModels: ['User'] }, prisma)],
+    }).compile();
+    try {
+      expect(module.get(SoftDeleteService)).toBeInstanceOf(SoftDeleteService);
+      expect(module.get(SoftDeleteEventEmitter)).toBeInstanceOf(SoftDeleteEventEmitter);
+      expect(module.get(SOFT_DELETE_PRISMA_SERVICE)).toBe(prisma);
+      expect(module.get(SOFT_DELETE_MODULE_OPTIONS).deletedAtField).toBe('deletedAt');
+    } finally {
+      await module.close();
+    }
+  });
 
-    expect(result).toEqual({
-      module: TestSoftDeleteModule,
-      providers: [
-        { provide: SOFT_DELETE_MODULE_OPTIONS, useValue: { deletedAtField: 'deletedAt', prismaServiceToken: 'TEST_PRISMA', softDeleteModels: ['User', 'Post'] } },
-        { provide: CascadeHandler, useValue: null },
-        SoftDeleteService,
-        SoftDeleteEventEmitter,
-      ],
-      exports: [SoftDeleteService, SOFT_DELETE_MODULE_OPTIONS, SoftDeleteEventEmitter],
-    });
+  it('rejects configured cascade without DMMF, like the production module', async () => {
+    await expect(Test.createTestingModule({
+      imports: [TestSoftDeleteModule.register({
+        softDeleteModels: ['User', 'Post'], cascade: { User: ['Post'] },
+      }, {})],
+    }).compile()).rejects.toBeInstanceOf(CascadeDmmfMissingError);
   });
 });
 

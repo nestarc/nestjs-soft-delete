@@ -1,6 +1,6 @@
 {
   "name": "@nestarc/soft-delete",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "Prisma soft-delete extension for NestJS with automatic query filtering, cascade support, and restore API",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -30,7 +30,8 @@
     "test:e2e:tenancy-candidate": "node scripts/test-tenancy-candidate.js",
     "test:types": "npm run build && tsc -p tsconfig.public-types.json",
     "lint": "eslint \"src/**/*.ts\"",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test:consumer:testing": "npm run build && node scripts/test-testing-consumer.mjs"
   },
   "engines": {
     "node": "^20.19.0 || ^22.12.0 || >=24.0.0"

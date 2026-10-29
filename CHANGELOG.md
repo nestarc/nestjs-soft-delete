@@ -4,6 +4,21 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.5] - 2026-10-29
+
+### Fixed
+
+- Share runtime chunks between the root and `/testing` entry points within each build format,
+  preserving `SoftDeleteService`, injection-token, event-emitter and `SoftDeleteContext` identity.
+  Use matching CommonJS imports or matching ESM imports; mixed-format identity is not promised.
+  The published 0.7.4 tarball does not contain this packaging fix.
+- Create configured cascade handlers in `TestSoftDeleteModule` through the production module's
+  provider factory, including its explicit DMMF requirement, so service fixtures can exercise
+  cascade restore instead of silently disabling it.
+- Add packed CommonJS/ESM consumer coverage for root/testing identities, context and cascade
+  behavior. The README now separates the 0.7.5 fixture from the 0.7.4 workaround and uses
+  independent test data with teardown.
+
 ## [0.7.4] - 2026-09-29
 
 ### Changed

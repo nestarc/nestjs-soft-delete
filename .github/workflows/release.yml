@@ -62,6 +62,9 @@ jobs:
       - name: Build & Public Type Test
         run: npm run test:types
 
+      - name: Packed Testing Consumer
+        run: node scripts/test-testing-consumer.mjs
+
       - name: Verify Package Contents
         run: npm pack --dry-run
 
