@@ -369,7 +369,7 @@ describe('SoftDeleteService', () => {
       const auditService = new SoftDeleteService(auditOptions, mockPrisma, null, null);
 
       await expect(auditService.restore('User', { id: '1' })).rejects.toThrow(
-        'requires the extension order',
+        'requires audit-log before soft-delete',
       );
       expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
       expect(mockPrisma.user.update).not.toHaveBeenCalled();

@@ -5,11 +5,21 @@ import { createPrismaSoftDeleteExtension } from '../../src/prisma/soft-delete-ex
 import { CascadeHandler } from '../../src/prisma/cascade-handler';
 import { SoftDeleteService } from '../../src/services/soft-delete.service';
 import { createAuditExtension, applyAuditTableSchema } from '@nestarc/audit-log';
-import {
-  createPrismaTenancyExtension,
-  TenancyContext,
-  TenancyService,
-} from '@nestarc/tenancy';
+import * as tenancyApi from '@nestarc/tenancy';
+import { createPrismaTenancyExtension, TenancyContext, TenancyService } from '@nestarc/tenancy';
+
+// Keep the legacy peer lane compilable: tenancy <0.16.4 does not export this helper.
+const tenancyTransactionCallback = (
+  tenancyApi as unknown as {
+    tenancyTransactionCallback?: <T>(
+      tenancyService: TenancyService,
+      callback: (tx: any) => Promise<T>,
+    ) => (tx: any) => Promise<T>;
+  }
+).tenancyTransactionCallback;
+if (process.env.SOFT_DELETE_TENANCY_MODE === 'callback' && !tenancyTransactionCallback) {
+  throw new Error('The callback compatibility lane requires tenancyTransactionCallback()');
+}
 
 const trackedModels = ['User', 'Post', 'Comment', 'AccessKey'];
 const databaseMapping = {
@@ -35,26 +45,35 @@ describe('tenancy + audit-log + soft-delete atomic integration E2E', () => {
   const base = createBasePrisma();
   const tenancyContext = new TenancyContext();
   const tenancyService = new TenancyService(tenancyContext);
-  const tenancy = createPrismaTenancyExtension(tenancyService, {
-    interactiveTransactionSupport: true,
-    failClosed: true,
-  });
+  const tenancy = tenancyTransactionCallback
+    ? null
+    : createPrismaTenancyExtension(tenancyService, {
+        interactiveTransactionSupport: true,
+        failClosed: true,
+      });
+  const lifecycleBase = () => (tenancy ? base.$extends(tenancy) : base);
+  const tenantOptions = tenancyTransactionCallback
+    ? { tenantResolver: () => tenancyService.getCurrentTenantOrThrow() }
+    : {};
+  const bindTenant = <T>(callback: (tx: any) => Promise<T>) =>
+    tenancyTransactionCallback ? tenancyTransactionCallback(tenancyService, callback) : callback;
   const audit = createAuditExtension({
     consistency: 'atomic-required',
     trackedModels,
     tenantRequired: true,
+    ...tenantOptions,
     maxBatchRecords: moduleOptions.auditMaxBatchRecords,
     databaseMapping,
     primaryKey,
     prismaModule: { Prisma },
   });
   const softDelete = createPrismaSoftDeleteExtension(moduleOptions);
-  const client: any = base.$extends(tenancy).$extends(audit).$extends(softDelete);
-  const bestEffortClient: any = base
-    .$extends(tenancy)
+  const client: any = lifecycleBase().$extends(audit).$extends(softDelete);
+  const bestEffortClient: any = lifecycleBase()
     .$extends(
       createAuditExtension({
         consistency: 'best-effort',
+        ...tenantOptions,
         trackedModels,
         databaseMapping,
         prismaModule: { Prisma },
@@ -71,7 +90,7 @@ describe('tenancy + audit-log + soft-delete atomic integration E2E', () => {
   const service = new SoftDeleteService(moduleOptions, client, cascadeHandler, null);
 
   const withTenantAuditTransaction = <T>(callback: (tx: any) => Promise<T>): Promise<T> =>
-    tenancyContext.run('tenant-1', () => client.withAuditTransaction(callback));
+    tenancyContext.run('tenant-1', () => client.withAuditTransaction(bindTenant(callback)));
 
   beforeAll(async () => {
     await base.$connect();
@@ -140,8 +159,8 @@ describe('tenancy + audit-log + soft-delete atomic integration E2E', () => {
 
     await expect(
       tenancyContext.run('tenant-1', () =>
-        bestEffortClient.withAuditTransaction((tx: any) =>
-          tx.user.delete({ where: { id: user.id } }),
+        bestEffortClient.withAuditTransaction(
+          bindTenant((tx: any) => tx.user.delete({ where: { id: user.id } })),
         ),
       ),
     ).rejects.toThrow('requires audit-log consistency: "atomic-required"');
@@ -432,6 +451,7 @@ describe('tenancy + audit-log + soft-delete atomic integration E2E', () => {
       consistency: 'atomic-required',
       trackedModels,
       tenantRequired: true,
+      ...tenantOptions,
       maxBatchRecords: moduleOptions.auditMaxBatchRecords,
       databaseMapping,
       primaryKey,
@@ -441,15 +461,12 @@ describe('tenancy + audit-log + soft-delete atomic integration E2E', () => {
       ...moduleOptions,
       auditMaxBatchRecords: 1,
     });
-    const cappedClient: any = base
-      .$extends(tenancy)
-      .$extends(cappedAudit)
-      .$extends(cappedSoftDelete);
+    const cappedClient: any = lifecycleBase().$extends(cappedAudit).$extends(cappedSoftDelete);
 
     await expect(
       tenancyContext.run('tenant-1', () =>
-        cappedClient.withAuditTransaction((tx: any) =>
-          tx.user.deleteMany({ where: { name: 'Over cap' } }),
+        cappedClient.withAuditTransaction(
+          bindTenant((tx: any) => tx.user.deleteMany({ where: { name: 'Over cap' } })),
         ),
       ),
     ).rejects.toThrow('exceeds auditMaxBatchRecords (1)');

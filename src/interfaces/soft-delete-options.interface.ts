@@ -37,8 +37,10 @@ export interface SoftDeleteModuleOptions {
   /** Opt-in relation read filtering for to-many include/select trees. Default: false */
   relationFilters?: boolean | RelationFilterOptions;
   /**
-   * Require the @nestarc/audit-log atomic lifecycle bridge. The official
-   * extension order is tenancy -> audit-log -> soft-delete.
+   * Require the @nestarc/audit-log atomic lifecycle bridge. Apply audit-log
+   * before soft-delete and run mutations inside withAuditTransaction().
+   * For tenancy 0.16.4, pass tenancyTransactionCallback() to that owner on a
+   * dedicated lifecycle client without the per-query tenancy extension.
    */
   auditLifecycle?: 'atomic-required';
   /** Maximum records converted to record-level lifecycle mutations. Default: 1000. */

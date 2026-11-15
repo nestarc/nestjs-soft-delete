@@ -1,0 +1,16 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Document {
+  id        String    @id
+  tenantId  String    @map("tenant_id")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("documents")
+}

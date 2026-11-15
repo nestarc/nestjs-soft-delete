@@ -46,7 +46,7 @@ export function validateAuditLifecycleOptions(options: AuditLifecycleOptions): v
 export function requireAuditLifecycleClient(client: any): AuditLifecycleClient {
   if (typeof client?.withAuditLifecycle !== 'function') {
     throw new Error(
-      '[@nestarc/soft-delete] auditLifecycle: "atomic-required" requires the extension order tenancy -> audit-log -> soft-delete and execution inside withAuditTransaction()',
+      '[@nestarc/soft-delete] auditLifecycle: "atomic-required" requires audit-log before soft-delete and execution inside withAuditTransaction()',
     );
   }
   if (typeof client?.getAuditCapabilities !== 'function') {
