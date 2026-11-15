@@ -54,6 +54,9 @@ jobs:
       - name: Unit Tests
         run: npm test
 
+      - name: Candidate Runner Tests
+        run: npm run test:tenancy-candidate:unit
+
       - name: E2E Tests
         run: npm run test:e2e
         env:
@@ -64,6 +67,11 @@ jobs:
 
       - name: Packed Testing Consumer
         run: node scripts/test-testing-consumer.mjs
+
+      - name: Latest audited lifecycle compatibility
+        run: npm run test:e2e:tenancy-candidate -- --tenancy-version 0.16.4 --audit-log-version 0.8.0 --prisma-version 7.10.1 --report "$RUNNER_TEMP/soft-delete-lifecycle.json"
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/soft_delete_test
 
       - name: Verify Package Contents
         run: npm pack --dry-run

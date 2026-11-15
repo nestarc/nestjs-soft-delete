@@ -989,7 +989,7 @@ describe('_buildSoftDeleteQueryHandlers', () => {
           query: createMockQuery(),
           client,
         }),
-      ).rejects.toThrow('requires the extension order');
+      ).rejects.toThrow('requires audit-log before soft-delete');
       expect(client.user.update).not.toHaveBeenCalled();
     });
 

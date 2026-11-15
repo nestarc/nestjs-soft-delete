@@ -1,11 +1,20 @@
 name: Tenancy Candidate
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       tenancy-ref:
-        description: Exact nestjs-tenancy commit SHA to pack as 0.16.0 candidate
+        description: Optional exact nestjs-tenancy commit SHA; otherwise verify published 0.16.4
+        required: false
+        type: string
+      audit-log-version:
+        description: Exact published audit-log version
         required: true
+        default: '0.8.0'
         type: string
 
 permissions:
@@ -13,13 +22,14 @@ permissions:
 
 jobs:
   candidate:
-    name: Tenancy candidate / Node ${{ matrix.node-version }}
+    name: Latest lifecycle / Node ${{ matrix.node-version }} / Prisma ${{ matrix.prisma-version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        node-version: [22.13.0, 24]
+        node-version: ['22.23.4', '24.22.1']
+        prisma-version: ['6.19.3', '7.10.1']
     services:
       postgres:
         image: postgres:15-alpine
@@ -38,36 +48,55 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
       - name: Check out exact tenancy candidate
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.tenancy-ref != '' }}
         uses: actions/checkout@v4
         with:
           repository: nestarc/nestjs-tenancy
           ref: ${{ inputs.tenancy-ref }}
           path: .tenancy-candidate
 
-      - name: Verify exact tenancy commit
+      - name: Verify and pack the candidate without changing its version
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.tenancy-ref != '' }}
+        id: tenancy
         working-directory: .tenancy-candidate
         run: |
           node -e "if (!/^[0-9a-f]{40}$/.test(process.env.EXPECTED_SHA)) process.exit(1)"
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          npm ci
+          npm run build
+          npm pack --json --ignore-scripts --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/tenancy-pack.json"
+          node -e "const fs=require('node:fs'),path=require('node:path');const p=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'tenancy-pack.json'),'utf8'));if(p.length!==1)throw Error('Expected one tarball');fs.appendFileSync(process.env.GITHUB_OUTPUT,'tarball='+path.join(process.env.RUNNER_TEMP,p[0].filename)+'\n')"
         env:
           EXPECTED_SHA: ${{ inputs.tenancy-ref }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: npm
-
-      - name: Pack tenancy 0.16.0 candidate
-        id: tenancy
-        working-directory: .tenancy-candidate
+      - name: Strict install, PostgreSQL E2E, and packed lifecycle consumer
         run: |
-          npm ci
-          npm version 0.16.0 --no-git-tag-version --allow-same-version --ignore-scripts
-          npm pack --pack-destination "$RUNNER_TEMP"
-          echo "tarball=$RUNNER_TEMP/nestarc-tenancy-0.16.0.tgz" >> "$GITHUB_OUTPUT"
-
-      - name: Strict install, PostgreSQL E2E, and packed consumer
-        run: npm run test:e2e:tenancy-candidate -- --tenancy-tarball "${{ steps.tenancy.outputs.tarball }}"
+          args=(--audit-log-version "$AUDIT_LOG_VERSION" --prisma-version "$PRISMA_VERSION" --report "$RUNNER_TEMP/lifecycle-report.json")
+          if [ -n "$TENANCY_TARBALL" ]; then
+            args+=(--tenancy-tarball "$TENANCY_TARBALL")
+          else
+            args+=(--tenancy-version 0.16.4)
+          fi
+          npm run test:e2e:tenancy-candidate -- "${args[@]}"
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/soft_delete_test
+          AUDIT_LOG_VERSION: ${{ inputs.audit-log-version || '0.8.0' }}
+          PRISMA_VERSION: ${{ matrix.prisma-version }}
+          TENANCY_TARBALL: ${{ steps.tenancy.outputs.tarball }}
+          TENANCY_CANDIDATE_SHA: ${{ inputs.tenancy-ref }}
+
+      - name: Upload exact artifact verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-node-${{ matrix.node-version }}-prisma-${{ matrix.prisma-version }}
+          path: ${{ runner.temp }}/lifecycle-report.json
+          if-no-files-found: warn

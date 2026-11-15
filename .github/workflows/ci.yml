@@ -31,6 +31,9 @@ jobs:
       - name: Unit Tests
         run: npm test
 
+      - name: Candidate Runner Tests
+        run: npm run test:tenancy-candidate:unit
+
       - name: Build & Public Type Test
         run: npm run test:types
 

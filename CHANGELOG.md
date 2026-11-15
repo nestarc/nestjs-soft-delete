@@ -4,6 +4,36 @@ All notable changes to `@nestarc/soft-delete` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.6] - 2026-11-15
+
+### Changed
+
+- Extend the optional audit-log peer range with `^0.8.0`, preserving the existing
+  audit-log, tenancy, NestJS, Prisma and standalone Node.js ranges.
+- Document the tenancy 0.16.4 public transaction callback with a dedicated
+  audit-log → soft-delete client, aligned batch limits, explicit tenant resolution,
+  and the same lifecycle client for NestJS restore and purge services.
+- Validate candidate package engine ranges instead of requiring an old tenancy
+  engine string, and retain the selected package's real version. The runner accepts
+  exact published tenancy/audit-log versions or an explicit tenancy tarball and
+  records artifact source identifiers and integrity in its report.
+
+### Added
+
+- A latest-composition validation lane for audit-log 0.8.0 and tenancy 0.16.4,
+  alongside the retained audit-log 0.4.1 / tenancy 0.15.0 development baseline.
+- Packed PostgreSQL consumer coverage for public-callback tenant isolation,
+  lifecycle changes and audit rollback, with Prisma 6/7 consumer lanes.
+
+### Fixed
+
+- Correct the Quick Start Prisma provider exports and extended-client token so
+  NestJS resolves the same client for queries and restore operations. Align the
+  example with its User schema and preserve generated model types.
+- Remove the misleading requirement to apply the per-query tenancy extension to
+  every audited lifecycle client from errors and API documentation. Audit-log
+  must precede soft-delete, and mutations must run inside its transaction owner.
+
 ## [0.7.5] - 2026-10-29
 
 ### Fixed

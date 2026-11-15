@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const semver = require('semver');
 
-const PACKAGE_NAME = '@nestarc/tenancy';
+const TENANCY = '@nestarc/tenancy';
+const AUDIT_LOG = '@nestarc/audit-log';
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
 const INSTALL_ARGS = [
   '--strict-peer-deps',
@@ -16,12 +19,13 @@ const INSTALL_ARGS = [
   '--no-audit',
   '--no-fund',
 ];
+const USAGE =
+  'Usage: npm run test:e2e:tenancy-candidate -- [--tenancy-version 0.16.4 | --tenancy-tarball /path/candidate.tgz] [--audit-log-version 0.8.0] [--prisma-version 7.10.1] [--report /path/report.json]';
 
 function npmInvocation(args) {
-  const npmExecPath = process.env.npm_execpath;
-  return npmExecPath
-    ? { command: process.execPath, args: [npmExecPath, ...args] }
-    : { command: 'npm', args };
+  return process.env.npm_execpath
+    ? { command: process.execPath, args: [process.env.npm_execpath, ...args] }
+    : { command: process.platform === 'win32' ? 'npm.cmd' : 'npm', args };
 }
 
 function runNpm(args, options = {}) {
@@ -34,213 +38,386 @@ function runNpm(args, options = {}) {
 
 function strictEnvironment(extra = {}) {
   const env = { ...process.env, ...extra };
+  const options = [
+    'force',
+    'legacy_peer_deps',
+    'registry',
+    'replace_registry_host',
+    'strict_peer_deps',
+  ];
   for (const key of Object.keys(env)) {
-    const normalized = key.toLowerCase().replaceAll('-', '_');
-    if (
-      normalized === 'npm_config_force' ||
-      normalized === 'npm_config_legacy_peer_deps' ||
-      normalized === 'npm_config_registry' ||
-      normalized === 'npm_config_replace_registry_host' ||
-      normalized === 'npm_config_strict_peer_deps'
-    ) {
+    if (options.some((option) => key.toLowerCase().replaceAll('-', '_') === `npm_config_${option}`))
       delete env[key];
-    }
   }
-  env.npm_config_force = 'false';
-  env.npm_config_legacy_peer_deps = 'false';
-  env.npm_config_registry = PUBLIC_REGISTRY;
-  env.npm_config_replace_registry_host = 'never';
-  env.npm_config_strict_peer_deps = 'true';
-  return env;
+  return {
+    ...env,
+    npm_config_force: 'false',
+    npm_config_legacy_peer_deps: 'false',
+    npm_config_registry: PUBLIC_REGISTRY,
+    npm_config_replace_registry_host: 'never',
+    npm_config_strict_peer_deps: 'true',
+  };
 }
 
-function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-}
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 
-function writeJson(filePath, value) {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+function exactVersion(value, label) {
+  if (!semver.valid(value) || value !== semver.valid(value))
+    throw new Error(`${label} must be an exact semantic version, received ${value}`);
+  return value;
 }
 
 function parseArguments(argv) {
-  if (argv.length !== 2 || argv[0] !== '--tenancy-tarball' || !argv[1]) {
+  const options = {};
+  const keys = new Map([
+    ['--tenancy-version', 'tenancyVersion'],
+    ['--tenancy-tarball', 'tenancyTarball'],
+    ['--audit-log-version', 'auditLogVersion'],
+    ['--prisma-version', 'prismaVersion'],
+    ['--report', 'report'],
+  ]);
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = keys.get(argv[i]);
+    if (!key || !argv[i + 1] || argv[i + 1].startsWith('--') || options[key])
+      throw new Error(USAGE);
+    options[key] = argv[i + 1];
+  }
+  if (options.tenancyVersion && options.tenancyTarball)
+    throw new Error('Choose --tenancy-version or --tenancy-tarball, not both');
+  if (!options.tenancyTarball) options.tenancyVersion ??= '0.16.4';
+  // Retain the original tarball-only command's baseline audit dependency.
+  if (!options.tenancyTarball) options.auditLogVersion ??= '0.8.0';
+  options.prismaVersion ??= '7.10.1';
+  for (const key of ['tenancyVersion', 'auditLogVersion', 'prismaVersion']) {
+    if (options[key]) exactVersion(options[key], key);
+  }
+  if (![6, 7].includes(semver.major(options.prismaVersion)))
+    throw new Error('Packed consumer supports Prisma 6 or 7');
+  if (options.tenancyTarball) {
+    if (
+      path.extname(options.tenancyTarball) !== '.tgz' ||
+      !fs.statSync(options.tenancyTarball).isFile()
+    )
+      throw new Error('--tenancy-tarball must point to a regular .tgz file');
+    options.tenancyTarball = fs.realpathSync(options.tenancyTarball);
+  }
+  if (options.report) options.report = path.resolve(options.report);
+  return options;
+}
+
+function validateManifest(manifest, packageName, peerRange, nodeVersion = process.version) {
+  if (manifest.name !== packageName)
+    throw new Error(`Expected ${packageName}, received ${manifest.name}`);
+  exactVersion(manifest.version, packageName);
+  if (!peerRange || !semver.satisfies(manifest.version, peerRange)) {
     throw new Error(
-      'Usage: npm run test:e2e:tenancy-candidate -- --tenancy-tarball /absolute/path/to/candidate.tgz',
+      `${packageName}@${manifest.version} is outside soft-delete peer range ${peerRange}`,
     );
   }
-  const tarball = path.resolve(argv[1]);
-  if (path.extname(tarball) !== '.tgz') {
-    throw new Error('--tenancy-tarball must point to a .tgz file');
-  }
-  const stat = fs.statSync(tarball);
-  if (!stat.isFile()) {
-    throw new Error('The tenancy candidate must be a regular file');
-  }
-  return fs.realpathSync(tarball);
-}
-
-function readPackedManifest(tarball) {
-  const raw = execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
-    encoding: 'utf8',
-  });
-  return JSON.parse(raw);
-}
-
-function validateCandidate(tarball) {
-  const manifest = readPackedManifest(tarball);
-  if (manifest.name !== PACKAGE_NAME) {
-    throw new Error(`Expected ${PACKAGE_NAME}, received ${String(manifest.name)}`);
-  }
-  if (!/^0\.16\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
-    throw new Error(`Expected a 0.16.x tenancy candidate, received ${manifest.version}`);
-  }
-  if (manifest.engines?.node !== '^22.13.0 || ^24.0.0') {
+  const engine = manifest.engines?.node;
+  if (engine && (!semver.validRange(engine) || !semver.satisfies(nodeVersion, engine))) {
     throw new Error(
-      `Unexpected tenancy Node contract: ${String(manifest.engines?.node)}`,
+      `${packageName}@${manifest.version} requires Node ${engine}; running ${nodeVersion}`,
     );
   }
   return manifest;
 }
 
-function copyTrackedCheckout(source, destination) {
-  const output = execFileSync('git', ['ls-files', '-z'], { cwd: source });
-  for (const relativePath of output.toString('utf8').split('\0').filter(Boolean)) {
-    const sourcePath = path.join(source, relativePath);
-    const destinationPath = path.join(destination, relativePath);
-    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-    fs.copyFileSync(sourcePath, destinationPath);
+function readPackedManifest(tarball) {
+  return JSON.parse(
+    execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
+      encoding: 'utf8',
+    }),
+  );
+}
+
+function artifact(tarball, source, gitHead = null) {
+  const manifest = readPackedManifest(tarball);
+  return {
+    tarball,
+    manifest,
+    evidence: {
+      name: manifest.name,
+      version: manifest.version,
+      source,
+      gitHead,
+      node: manifest.engines?.node ?? null,
+      integrity: `sha512-${createHash('sha512').update(fs.readFileSync(tarball)).digest('base64')}`,
+    },
+  };
+}
+
+function publishedArtifact(name, version, destination, env) {
+  const spec = `${name}@${exactVersion(version, name)}`;
+  const metadata = JSON.parse(
+    runNpm(['view', spec, '--json', `--registry=${PUBLIC_REGISTRY}`], {
+      cwd: destination,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    }),
+  );
+  const packed = JSON.parse(
+    runNpm(
+      [
+        'pack',
+        spec,
+        '--json',
+        '--ignore-scripts',
+        '--pack-destination',
+        destination,
+        `--registry=${PUBLIC_REGISTRY}`,
+      ],
+      {
+        cwd: destination,
+        env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'inherit'],
+      },
+    ),
+  );
+  if (packed.length !== 1) throw new Error(`Expected one artifact for ${spec}`);
+  const result = artifact(
+    path.join(destination, packed[0].filename),
+    metadata.dist.tarball,
+    metadata.gitHead ?? null,
+  );
+  if (result.manifest.version !== version || result.evidence.integrity !== metadata.dist.integrity)
+    throw new Error(`Registry artifact mismatch for ${spec}`);
+  return result;
+}
+
+function copyCheckout(source, destination) {
+  // New regression fixtures must be included before they have been committed.
+  const output = execFileSync(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+    { cwd: source },
+  );
+  for (const relative of new Set(output.toString('utf8').split('\0').filter(Boolean))) {
+    const input = path.join(source, relative);
+    if (!fs.existsSync(input) || fs.statSync(input).isDirectory()) continue;
+    const outputFile = path.join(destination, relative);
+    fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+    fs.copyFileSync(input, outputFile);
   }
 }
 
-function installCandidateCheckout(root, tarball, temporaryRoot, env) {
+function installCheckout(root, tenancy, audit, temporaryRoot, env) {
   const checkout = path.join(temporaryRoot, 'checkout');
   fs.mkdirSync(checkout);
-  copyTrackedCheckout(root, checkout);
-
+  copyCheckout(root, checkout);
   const manifestPath = path.join(checkout, 'package.json');
   const manifest = readJson(manifestPath);
-  manifest.devDependencies[PACKAGE_NAME] = `file:${tarball}`;
+  manifest.devDependencies[TENANCY] = `file:${tenancy.tarball}`;
+  manifest.devDependencies[AUDIT_LOG] = `file:${audit.tarball}`;
   writeJson(manifestPath, manifest);
-
   runNpm(['install', '--package-lock-only', '--ignore-scripts', ...INSTALL_ARGS], {
     cwd: checkout,
     env,
   });
   runNpm(['ci', ...INSTALL_ARGS], { cwd: checkout, env });
-
-  const installed = readJson(
-    path.join(checkout, 'node_modules', '@nestarc', 'tenancy', 'package.json'),
-  );
-  if (installed.version !== validateCandidate(tarball).version) {
-    throw new Error(`Installed tenancy version mismatch: ${installed.version}`);
+  for (const selected of [tenancy, audit]) {
+    const installed = readJson(
+      path.join(checkout, 'node_modules', selected.manifest.name, 'package.json'),
+    );
+    if (installed.version !== selected.manifest.version)
+      throw new Error(`Installed ${selected.manifest.name} version mismatch`);
   }
-
   runNpm(['run', 'test:types'], { cwd: checkout, env });
   runNpm(['run', 'test:e2e:cross-package'], { cwd: checkout, env });
   return checkout;
 }
 
-function packSoftDelete(checkout, temporaryRoot, env) {
-  const output = runNpm(
-    ['pack', '--json', '--pack-destination', temporaryRoot],
-    { cwd: checkout, env, stdio: ['ignore', 'pipe', 'inherit'], encoding: 'utf8' },
+function packSoftDelete(checkout, destination, env) {
+  const packed = JSON.parse(
+    runNpm(['pack', '--json', '--ignore-scripts', '--pack-destination', destination], {
+      cwd: checkout,
+      env,
+      stdio: ['ignore', 'pipe', 'inherit'],
+      encoding: 'utf8',
+    }),
   );
-  const result = JSON.parse(output);
-  if (!Array.isArray(result) || result.length !== 1) {
-    throw new Error('Expected npm pack to produce one soft-delete artifact');
-  }
-  return path.join(temporaryRoot, result[0].filename);
+  if (packed.length !== 1) throw new Error('Expected one soft-delete artifact');
+  return artifact(path.join(destination, packed[0].filename), 'local checkout build');
 }
 
-function verifyPackedConsumer(softDeleteTarball, tenancyTarball, temporaryRoot, env) {
+function verifyPackedConsumer(
+  checkout,
+  softDelete,
+  tenancy,
+  audit,
+  temporaryRoot,
+  env,
+  options,
+  modern,
+) {
   const consumer = path.join(temporaryRoot, 'consumer');
   fs.mkdirSync(consumer);
+  const dependencies = {
+    '@nestarc/soft-delete': `file:${softDelete.tarball}`,
+    [TENANCY]: `file:${tenancy.tarball}`,
+    [AUDIT_LOG]: `file:${audit.tarball}`,
+    '@nestjs/common': '11.2.1',
+    '@nestjs/core': '11.2.1',
+    '@prisma/client': options.prismaVersion,
+    'reflect-metadata': '0.2.2',
+    rxjs: '7.8.2',
+  };
+  if (modern)
+    Object.assign(dependencies, {
+      prisma: options.prismaVersion,
+      '@prisma/adapter-pg': options.prismaVersion,
+      pg: '8.22.0',
+    });
   writeJson(path.join(consumer, 'package.json'), {
-    name: 'soft-delete-tenancy-candidate-consumer',
+    name: 'soft-delete-audit-lifecycle-consumer',
     version: '0.0.0',
     private: true,
-    dependencies: {
-      '@nestarc/soft-delete': `file:${softDeleteTarball}`,
-      [PACKAGE_NAME]: `file:${tenancyTarball}`,
-      '@nestjs/common': '11.2.1',
-      '@nestjs/core': '11.2.1',
-      '@prisma/client': '7.10.0',
-      'reflect-metadata': '0.2.2',
-      rxjs: '7.8.2',
-    },
+    dependencies,
   });
-
-  runNpm(['install', '--ignore-scripts', ...INSTALL_ARGS], { cwd: consumer, env });
-  const installedSoftDelete = readJson(
-    path.join(consumer, 'node_modules', '@nestarc', 'soft-delete', 'package.json'),
-  );
-  const installedTenancy = readJson(
-    path.join(consumer, 'node_modules', '@nestarc', 'tenancy', 'package.json'),
-  );
-  if (installedSoftDelete.peerDependencies[PACKAGE_NAME] !== '^0.15.0 || ^0.16.0') {
-    throw new Error('Packed soft-delete artifact has an unexpected tenancy peer range');
+  runNpm(['install', '--ignore-scripts', ...INSTALL_ARGS], {
+    cwd: consumer,
+    env,
+  });
+  for (const selected of [softDelete, tenancy, audit]) {
+    const installed = readJson(
+      path.join(consumer, 'node_modules', selected.manifest.name, 'package.json'),
+    );
+    if (installed.version !== selected.manifest.version)
+      throw new Error(
+        `Consumer installed unexpected ${selected.manifest.name}@${installed.version}`,
+      );
   }
-  if (!installedTenancy.version.startsWith('0.16.')) {
-    throw new Error(`Packed consumer installed tenancy ${installedTenancy.version}`);
-  }
-
   execFileSync(
     process.execPath,
     [
       '-e',
-      "const sd=require('@nestarc/soft-delete');const ten=require('@nestarc/tenancy');if(typeof sd.createPrismaSoftDeleteExtension!=='function'||typeof ten.createPrismaTenancyExtension!=='function')process.exit(1);const context=new ten.TenancyContext();if(context.run('candidate-tenant',()=>context.getTenantId())!=='candidate-tenant')process.exit(1)",
+      "const sd=require('@nestarc/soft-delete');const ten=require('@nestarc/tenancy');if(typeof sd.createPrismaSoftDeleteExtension!=='function'||typeof ten.createPrismaTenancyExtension!=='function')process.exit(1);const c=new ten.TenancyContext();if(c.run('candidate',()=>c.getTenantId())!=='candidate')process.exit(1)",
     ],
     { cwd: consumer, env, stdio: 'inherit' },
   );
-
-  console.log(
-    JSON.stringify(
-      {
-        softDelete: {
-          version: installedSoftDelete.version,
-          source: fs.realpathSync(
-            path.join(consumer, 'node_modules', '@nestarc', 'soft-delete'),
+  if (modern) {
+    for (const file of ['schema.prisma', 'verify.mjs'])
+      fs.copyFileSync(
+        path.join(checkout, 'test', 'consumer-audit-lifecycle', file),
+        path.join(consumer, file),
+      );
+    if (semver.major(options.prismaVersion) === 6) {
+      const schema = path.join(consumer, 'schema.prisma');
+      fs.writeFileSync(
+        schema,
+        fs
+          .readFileSync(schema, 'utf8')
+          .replace(
+            'provider = "postgresql"',
+            'provider = "postgresql"\n  url = env("DATABASE_URL")',
           ),
-        },
-        tenancy: {
-          version: installedTenancy.version,
-          source: fs.realpathSync(
-            path.join(consumer, 'node_modules', '@nestarc', 'tenancy'),
-          ),
-        },
-      },
-      null,
-      2,
+      );
+    } else {
+      fs.writeFileSync(
+        path.join(consumer, 'prisma.config.ts'),
+        "import { defineConfig } from 'prisma/config';\nexport default defineConfig({ schema: 'schema.prisma', datasource: { url: process.env.DATABASE_URL } });\n",
+      );
+    }
+    execFileSync(
+      process.execPath,
+      ['node_modules/prisma/build/index.js', 'generate', '--schema=schema.prisma'],
+      { cwd: consumer, env, stdio: 'inherit' },
+    );
+    execFileSync(process.execPath, ['verify.mjs'], {
+      cwd: consumer,
+      env,
+      stdio: 'inherit',
+    });
+  }
+  const lock = readJson(path.join(consumer, 'package-lock.json'));
+  return {
+    prisma: options.prismaVersion,
+    mode: modern ? 'callback-rls-postgresql' : 'legacy-import',
+    packages: Object.fromEntries(
+      Object.keys(dependencies)
+        .map((name) => [name, lock.packages[`node_modules/${name}`]])
+        .map(([name, entry]) => [
+          name,
+          {
+            version: entry.version,
+            resolved: entry.resolved,
+            integrity: entry.integrity,
+          },
+        ]),
     ),
-  );
+  };
 }
 
 function main() {
-  const tenancyTarball = parseArguments(process.argv.slice(2));
-  const candidate = validateCandidate(tenancyTarball);
+  const options = parseArguments(process.argv.slice(2));
   const root = path.resolve(__dirname, '..');
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'soft-delete-tenancy-candidate-'));
+  const manifest = readJson(path.join(root, 'package.json'));
+  options.auditLogVersion ??= manifest.devDependencies[AUDIT_LOG];
+  const modern = semver.gte(options.auditLogVersion, '0.8.0');
   const env = strictEnvironment({
     DATABASE_URL:
-      process.env.DATABASE_URL ??
-      'postgresql://test:test@127.0.0.1:5432/soft_delete_test',
+      process.env.DATABASE_URL ?? 'postgresql://test:test@127.0.0.1:5432/soft_delete_test',
+    SOFT_DELETE_TENANCY_MODE: modern ? 'callback' : 'auto',
   });
-
-  console.log(
-    `Testing ${PACKAGE_NAME}@${candidate.version} from ${tenancyTarball} on Node ${process.version}`,
-  );
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'soft-delete-tenancy-candidate-'));
+  const report = {
+    status: 'failed',
+    node: process.version,
+    softDeleteCheckoutHead: execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim(),
+    softDeleteWorkingTreeChanged:
+      execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()
+        .length > 0,
+    artifacts: [],
+  };
   try {
-    const checkout = installCandidateCheckout(
-      root,
-      tenancyTarball,
+    const tenancy = options.tenancyTarball
+      ? artifact(
+          options.tenancyTarball,
+          options.tenancyTarball,
+          process.env.TENANCY_CANDIDATE_SHA ?? null,
+        )
+      : publishedArtifact(TENANCY, options.tenancyVersion, temporaryRoot, env);
+    validateManifest(tenancy.manifest, TENANCY, manifest.peerDependencies[TENANCY]);
+    const audit = publishedArtifact(AUDIT_LOG, options.auditLogVersion, temporaryRoot, env);
+    validateManifest(audit.manifest, AUDIT_LOG, manifest.peerDependencies[AUDIT_LOG]);
+    report.artifacts.push(tenancy.evidence, audit.evidence);
+    const checkout = installCheckout(root, tenancy, audit, temporaryRoot, env);
+    const softDelete = packSoftDelete(checkout, temporaryRoot, env);
+    report.artifacts.push(softDelete.evidence);
+    report.consumer = verifyPackedConsumer(
+      checkout,
+      softDelete,
+      tenancy,
+      audit,
       temporaryRoot,
       env,
+      options,
+      modern,
     );
-    const softDeleteTarball = packSoftDelete(checkout, temporaryRoot, env);
-    verifyPackedConsumer(softDeleteTarball, tenancyTarball, temporaryRoot, env);
+    report.status = 'passed';
+  } catch (error) {
+    report.error = error.message;
+    throw error;
   } finally {
+    console.log(JSON.stringify(report, null, 2));
+    if (options.report) {
+      fs.mkdirSync(path.dirname(options.report), { recursive: true });
+      writeJson(options.report, report);
+    }
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 }
 
-main();
+module.exports = {
+  parseArguments,
+  validateManifest,
+  strictEnvironment,
+  copyCheckout,
+};
+if (require.main === module) main();
